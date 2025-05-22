@@ -22,6 +22,7 @@ yarn-error.log*
 node_modules/
 jspm_packages/
 bower_components/
+package-lock.json
 
 # Build outputs
 dist/
