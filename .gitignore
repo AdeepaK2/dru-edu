@@ -32,6 +32,8 @@ out/
 .nuxt/
 .cache/
 
+.env
+
 # Coverage directories
 coverage/
 .nyc_output/
