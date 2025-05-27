@@ -1,10 +1,128 @@
 'use client';
 
 import React, { useState } from 'react';
+import { UserPlus, Users, CheckCircle, XCircle, BookOpen, Search } from 'lucide-react';
+import { Student, ParentInfo, PaymentInfo } from '@/models/studentSchema';
 
 export default function StudentsManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+    // New state for form inputs
+  const [newStudent, setNewStudent] = useState<Omit<Student, 'id'>>({
+    name: '',
+    email: '',
+    phone: '',
+    status: 'Active',
+    coursesEnrolled: 0,
+    enrollmentDate: new Date().toISOString().split('T')[0],
+    avatar: '',
+    parent: {
+      name: '',
+      email: '',
+      phone: ''
+    },
+    payment: {
+      status: 'Pending',
+      method: '',
+      lastPayment: 'N/A'
+    }
+  });
+
+  // Form input change handlers
+  const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewStudent({
+      ...newStudent,
+      [name]: value
+    });
+  };
+
+  const handleParentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewStudent({
+      ...newStudent,
+      parent: {
+        ...newStudent.parent,
+        [name]: value
+      }
+    });
+  };
+
+  const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setNewStudent({
+      ...newStudent,
+      payment: {
+        ...newStudent.payment,
+        [name]: value
+      }
+    });
+  };  // Submit handler
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const studentData = {
+      name: newStudent.name,
+      email: newStudent.email,
+      phone: newStudent.phone,
+      status: newStudent.status,
+      coursesEnrolled: newStudent.coursesEnrolled,
+      enrollmentDate: newStudent.enrollmentDate,
+      parent: newStudent.parent,
+      payment: newStudent.payment
+    };
+    
+    try {
+      const response = await fetch('/api/student', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(studentData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create student');
+      }
+      
+      const savedStudent = await response.json();
+      console.log('Student created successfully:', savedStudent);
+      
+      // Close the modal
+      setShowAddModal(false);
+      
+      // Reset the form
+      setNewStudent({
+        name: '',
+        email: '',
+        phone: '',
+        status: 'Active',
+        coursesEnrolled: 0,
+        enrollmentDate: new Date().toISOString().split('T')[0],
+        avatar: '',
+        parent: {
+          name: '',
+          email: '',
+          phone: ''
+        },
+        payment: {
+          status: 'Pending',
+          method: '',
+          lastPayment: 'N/A'
+        }
+      });
+        // Show success message
+      alert(`Student "${savedStudent.name}" has been created successfully! A welcome email with login credentials has been sent to ${savedStudent.email}.`);
+      
+      // Optionally, refresh the page or update the students list
+      window.location.reload();
+      
+    } catch (error: any) {
+      console.error('Error saving student data:', error);
+      alert(`Error: ${error.message || 'An unexpected error occurred'}`);
+    }
+  };
 
   // Dummy student data
   const students = [
@@ -16,9 +134,20 @@ export default function StudentsManagement() {
       enrollmentDate: '2024-01-15',
       status: 'Active',
       coursesEnrolled: 5,
-      avatar: 'JD'
-    },
-    {
+      avatar: 'JD',
+      // Added parent information
+      parent: {
+        name: 'Robert Doe',
+        email: 'robert.doe@email.com',
+        phone: '+1 234 567 8910'
+      },
+      // Added payment information
+      payment: {
+        status: 'Paid',
+        method: 'Credit Card',
+        lastPayment: '2024-05-01'
+      }
+    },    {
       id: 2,
       name: 'Jane Smith',
       email: 'jane.smith@email.com',
@@ -26,7 +155,17 @@ export default function StudentsManagement() {
       enrollmentDate: '2024-02-20',
       status: 'Active',
       coursesEnrolled: 3,
-      avatar: 'JS'
+      avatar: 'JS',
+      parent: {
+        name: 'Mary Smith',
+        email: 'mary.smith@email.com',
+        phone: '+1 234 567 8931'
+      },
+      payment: {
+        status: 'Paid',
+        method: 'Bank Transfer',
+        lastPayment: '2024-04-25'
+      }
     },
     {
       id: 3,
@@ -36,7 +175,17 @@ export default function StudentsManagement() {
       enrollmentDate: '2024-03-10',
       status: 'Suspended',
       coursesEnrolled: 2,
-      avatar: 'MJ'
+      avatar: 'MJ',
+      parent: {
+        name: 'Thomas Johnson',
+        email: 'thomas.johnson@email.com',
+        phone: '+1 234 567 8922'
+      },
+      payment: {
+        status: 'Overdue',
+        method: 'Credit Card',
+        lastPayment: '2024-01-15'
+      }
     },
     {
       id: 4,
@@ -46,7 +195,17 @@ export default function StudentsManagement() {
       enrollmentDate: '2024-01-25',
       status: 'Active',
       coursesEnrolled: 7,
-      avatar: 'SW'
+      avatar: 'SW',
+      parent: {
+        name: 'James Wilson',
+        email: 'james.wilson@email.com',
+        phone: '+1 234 567 8943'
+      },
+      payment: {
+        status: 'Paid',
+        method: 'PayPal',
+        lastPayment: '2024-05-10'
+      }
     },
     {
       id: 5,
@@ -56,7 +215,17 @@ export default function StudentsManagement() {
       enrollmentDate: '2024-04-05',
       status: 'Active',
       coursesEnrolled: 1,
-      avatar: 'DB'
+      avatar: 'DB',
+      parent: {
+        name: 'Linda Brown',
+        email: 'linda.brown@email.com',
+        phone: '+1 234 567 8954'
+      },
+      payment: {
+        status: 'Pending',
+        method: 'Not Selected',
+        lastPayment: 'N/A'
+      }
     }
   ];
 
@@ -79,9 +248,7 @@ export default function StudentsManagement() {
           onClick={() => setShowAddModal(true)}
           className="mt-4 sm:mt-0 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
+          <UserPlus className="w-5 h-5 mr-2" />
           Add Student
         </button>
       </div>
@@ -91,9 +258,7 @@ export default function StudentsManagement() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+              <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Students</p>
@@ -105,9 +270,7 @@ export default function StudentsManagement() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
-              <svg className="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Students</p>
@@ -121,9 +284,7 @@ export default function StudentsManagement() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-red-100 dark:bg-red-900 rounded-lg">
-              <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
-              </svg>
+              <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Suspended</p>
@@ -137,9 +298,7 @@ export default function StudentsManagement() {
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
-              <svg className="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
+              <BookOpen className="w-6 h-6 text-purple-600 dark:text-purple-400" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Avg Enrollments</p>
@@ -158,9 +317,7 @@ export default function StudentsManagement() {
             <label htmlFor="search" className="sr-only">Search students</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <Search className="h-5 w-5 text-gray-400" />
               </div>
               <input
                 id="search"
@@ -189,13 +346,15 @@ export default function StudentsManagement() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">
-              <tr>
+            <thead className="bg-gray-50 dark:bg-gray-700">              <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Student
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Contact
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Parent
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Enrollment Date
@@ -205,6 +364,9 @@ export default function StudentsManagement() {
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Payment
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Actions
@@ -230,10 +392,13 @@ export default function StudentsManagement() {
                         </div>
                       </div>
                     </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  </td>                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">{student.email}</div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">{student.phone}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900 dark:text-white">{student.parent.name}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{student.parent.phone}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {new Date(student.enrollmentDate).toLocaleDateString()}
@@ -248,6 +413,17 @@ export default function StudentsManagement() {
                         : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                     }`}>
                       {student.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      student.payment.status === 'Paid' 
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        : student.payment.status === 'Pending'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                    }`}>
+                      {student.payment.status}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -278,52 +454,167 @@ export default function StudentsManagement() {
               <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setShowAddModal(false)}></div>
             </div>
             <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Add New Student</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter full name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter email address"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Phone Number
-                    </label>
-                    <input
-                      type="tel"
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      placeholder="Enter phone number"
-                    />
+              <form onSubmit={handleSubmit}>
+                <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Add New Student</h3>
+                  <div className="space-y-4">
+                    {/* Student Information */}
+                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">Student Information</h4>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={newStudent.name}
+                        onChange={handleStudentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter student full name"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Email Address
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={newStudent.email}
+                        onChange={handleStudentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter student email address"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={newStudent.phone}
+                        onChange={handleStudentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter student phone number"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Status
+                      </label>
+                      <select
+                        name="status"
+                        value={newStudent.status}
+                        onChange={handleStudentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Suspended">Suspended</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                    </div>
+
+                    {/* Parent Information */}
+                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 pt-4">Parent Information</h4>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Parent Name
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={newStudent.parent.name}
+                        onChange={handleParentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter parent's full name"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Parent Email
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        value={newStudent.parent.email}
+                        onChange={handleParentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter parent's email address"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Parent Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        value={newStudent.parent.phone}
+                        onChange={handleParentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        placeholder="Enter parent's phone number"
+                        required
+                      />
+                    </div>
+
+                    {/* Payment Information */}
+                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 pt-4">Payment Information</h4>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Payment Status
+                      </label>
+                      <select
+                        name="status"
+                        value={newStudent.payment.status}
+                        onChange={handlePaymentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Overdue">Overdue</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Payment Method
+                      </label>
+                      <select
+                        name="method"
+                        value={newStudent.payment.method}
+                        onChange={handlePaymentChange}
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="">Select Payment Method</option>
+                        <option value="Credit Card">Credit Card</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                        <option value="PayPal">PayPal</option>
+                        <option value="Cash">Cash</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button className="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm">
-                  Add Student
-                </button>
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  className="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Cancel
-                </button>
-              </div>
+                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                  <button 
+                    type="submit"
+                    className="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Add Student
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddModal(false)}
+                    className="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

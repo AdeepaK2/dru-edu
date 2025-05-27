@@ -16,14 +16,13 @@ import {
 } from 'lucide-react';
 
 // Define sidebar menu items with Lucide icons
-const menuItems = [
-  { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/admin' },
+const menuItems = [  { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/admin' },
   { label: 'Students', icon: <Users size={20} />, path: '/admin/students' },
   { label: 'Teachers', icon: <GraduationCap size={20} />, path: '/admin/teachers' },
   { label: 'Classes', icon: <BookOpen size={20} />, path: '/admin/classes' }, // Using BookOpen instead
   { label: 'Video Portal', icon: <Video size={20} />, path: '/admin/videos' },
   { label: 'Transactions', icon: <CreditCard size={20} />, path: '/admin/transactions' },
-  { label: 'Question Bank', icon: <FileQuestion size={20} />, path: '/admin/questions' },
+  { label: 'Question Bank', icon: <FileQuestion size={20} />, path: '/admin/question' },
   { label: 'System Info', icon: <Settings size={20} />, path: '/admin/system' },
 ];
 
