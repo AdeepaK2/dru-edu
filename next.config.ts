@@ -6,10 +6,17 @@ const nextConfig: NextConfig = {
   },
   // Configure for Firebase hosting
   output: 'standalone',
-  experimental: {
-    // Enable server components
-    serverComponentsExternalPackages: ['firebase-admin'],
+  // Move serverComponentsExternalPackages to root level
+  serverExternalPackages: ['firebase-admin'],
+  // Performance optimizations
+  poweredByHeader: false,
+  // Enable compression
+  compress: true,
+  // Optimize images
+  images: {
+    formats: ['image/webp', 'image/avif'],
   },
+  // swcMinify is enabled by default in Next.js 15
 };
 
 export default nextConfig;

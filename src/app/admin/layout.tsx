@@ -6,31 +6,38 @@ import { auth } from '@/utils/firebase-client';
 import { onAuthStateChanged } from 'firebase/auth';
 import Navbar from '@/components/adminDashboard/Navbar';
 import Sidebar from '@/components/adminDashboard/Sidebar';
+import AdminLoadingBar from '@/components/adminDashboard/AdminLoadingBar';
+import { prefetchAdminPages } from '@/utils/performance';
+import { MelbourneDate } from '@/utils/melbourne-date';
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
-}) {
-  const [loading, setLoading] = useState(true);
+}) {  const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('Admin User');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(MelbourneDate.now());
+  const [authChecked, setAuthChecked] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
-  };
-
-  // Update clock every second
+  };  // Update clock every second
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrentTime(new Date());
+      setCurrentTime(MelbourneDate.now());
     }, 1000);
 
     return () => clearInterval(timer);
   }, []);
+
+  // Prefetch admin pages for faster navigation
+  useEffect(() => {
+    prefetchAdminPages();
+  }, []);
+  
   useEffect(() => {
     // Don't run auth checks on the login page to prevent circular redirects
     if (pathname === '/admin/login') {
@@ -38,10 +45,17 @@ export default function AdminLayout({
       return () => {};
     }
 
+    // Skip auth check if already verified and not on login page
+    if (authChecked && pathname !== '/admin/login') {
+      setLoading(false);
+      return () => {};
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
-          const idTokenResult = await user.getIdTokenResult();
+          // Cache admin verification to avoid repeated token checks
+          const idTokenResult = await user.getIdTokenResult(false); // Don't force refresh
           
           if (!idTokenResult.claims.admin) {
             await auth.signOut();
@@ -51,6 +65,7 @@ export default function AdminLayout({
           }
           
           setAdminName(user.displayName || user.email || 'Admin');
+          setAuthChecked(true);
           setLoading(false);
         } catch (error) {
           console.error("Error verifying admin status:", error);
@@ -63,7 +78,7 @@ export default function AdminLayout({
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [pathname, authChecked]);
 
   if (loading) {
     return (
@@ -75,30 +90,31 @@ export default function AdminLayout({
       </div>
     );
   }
-
   // Skip layout for login page
   if (pathname === '/admin/login') {
     return <>{children}</>;
-  }  // No sidebar items needed here since we're using the Sidebar component
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Loading Bar */}
+      <AdminLoadingBar />
+      
       {/* Top Navbar */}
       <Navbar 
         adminName={adminName} 
         currentTime={currentTime} 
         toggleSidebar={toggleSidebar} 
-      />
-
-      {/* Sidebar */}
+      />      {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
-
+      
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-10 bg-gray-600 bg-opacity-50 lg:hidden" onClick={() => setSidebarOpen(false)}></div>
       )}
-
+      
       {/* Main content */}
-      <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-64' : 'ml-16'} mt-16`}>
+      <div className={`transition-all duration-200 ${sidebarOpen ? 'ml-64' : 'ml-16'} mt-16`}>
         <main className="p-6">
           {children}
         </main>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Timestamp } from 'firebase/firestore';
 
 // Admin schema for validation
 export const adminSchema = z.object({
@@ -14,10 +15,9 @@ export type AdminData = z.infer<typeof adminSchema>;
 export interface AdminDocument {
   id: string;
   name: string;
-  email: string;
-  role: 'admin';
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
+  email: string;  role: 'admin';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 // Admin update schema

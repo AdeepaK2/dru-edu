@@ -1,5 +1,6 @@
 // Student data model with parent and payment information
 import { z } from 'zod';
+import { Timestamp } from 'firebase/firestore';
 
 // Parent information validation schema
 export const parentInfoSchema = z.object({
@@ -72,10 +73,9 @@ export interface StudentDocument {
   coursesEnrolled: number;
   avatar: string;
   parent: ParentInfo;
-  payment: PaymentInfo;
-  uid: string; // Firebase Auth UID
-  createdAt: FirebaseFirestore.Timestamp;
-  updatedAt: FirebaseFirestore.Timestamp;
+  payment: PaymentInfo;  uid: string; // Firebase Auth UID
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
 // Type inference from schemas

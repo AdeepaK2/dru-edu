@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   Users, 
   GraduationCap, 
@@ -8,14 +8,22 @@ import {
   Video, 
   CreditCard, 
   FileQuestion, 
-  Activity, 
+  Activity,
   Zap,
   UserPlus,
   PlusCircle,
   Upload
 } from 'lucide-react';
+import { NavigationLoader } from '@/utils/performance';
 
 export default function AdminDashboard() {
+  const loader = NavigationLoader.getInstance();
+
+  // Clear loading state when dashboard loads
+  useEffect(() => {
+    loader.setLoading(false);
+  }, [loader]);
+
   // Dummy data for dashboard
   const stats = {
     totalStudents: 1247,

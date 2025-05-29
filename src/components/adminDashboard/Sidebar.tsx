@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   LayoutDashboard, 
   Users, 
@@ -14,6 +14,7 @@ import {
   Settings, 
   LogOut 
 } from 'lucide-react';
+import { NavigationLoader } from '@/utils/performance';
 
 // Define sidebar menu items with Lucide icons
 const menuItems = [  { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/admin' },
@@ -33,17 +34,26 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
   const pathname = usePathname();
+  const router = useRouter();
+  const loader = NavigationLoader.getInstance();
+
+  const handleNavigation = useCallback((path: string) => {
+    if (pathname === path) return; // Don't navigate if already on the page
+    
+    loader.setLoading(true);
+    router.push(path);
+  }, [pathname, router, loader]);
 
   return (
-    <div className={`sidebar transition-all duration-300 ${isOpen ? 'w-64' : 'w-16'} fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-lg z-10 border-r`}>
+    <div className={`sidebar transition-all duration-200 ${isOpen ? 'w-64' : 'w-16'} fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-lg z-10 border-r`}>
       
       <nav className="mt-4">
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => (
             <li key={item.path}>
-              <Link 
-                href={item.path}
-                className={`flex items-center p-3 rounded-md transition-all duration-200
+              <button
+                onClick={() => handleNavigation(item.path)}
+                className={`w-full flex items-center p-3 rounded-md transition-all duration-150 text-left
                   ${pathname === item.path 
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-500 font-medium' 
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-blue-600 dark:hover:text-blue-500'}
@@ -53,20 +63,28 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
                   {item.icon}
                 </div>
                 {isOpen && (
-                  <span className="ml-3 transition-opacity duration-200 whitespace-nowrap">
+                  <span className="ml-3 transition-opacity duration-150 whitespace-nowrap">
                     {item.label}
                   </span>
                 )}
-              </Link>
+              </button>
+              {/* Hidden Link for prefetching */}
+              <Link 
+                href={item.path}
+                prefetch={true}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
             </li>
           ))}
         </ul>
       </nav>
-      
-      <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-100 dark:border-gray-800">
+        <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-100 dark:border-gray-800">
         <Link
           href="/admin/logout"
-          className="flex items-center p-2.5 rounded-md text-gray-700 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-500 transition-all duration-200"
+          prefetch={false}
+          className="flex items-center p-2.5 rounded-md text-gray-700 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-500 transition-all duration-150"
         >
           <LogOut size={20} />
           {isOpen && <span className="ml-3 font-medium whitespace-nowrap">Logout</span>}

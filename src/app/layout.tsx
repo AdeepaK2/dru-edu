@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, Poppins, Merriweather } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui";
+import { TimezoneProvider } from "@/components/TimezoneProvider";
 
 // Configure fonts with subsets
 const inter = Inter({
@@ -36,7 +38,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${poppins.variable} ${merriweather.variable}`}>
       <body className="antialiased font-sans bg-gradient-to-br from-white to-primary-50 dark:from-gray-900 dark:to-gray-800 min-h-screen">
-        {children}
+        <TimezoneProvider>
+          <ToastProvider>
+            {children}
+          </ToastProvider>
+        </TimezoneProvider>
       </body>
     </html>
   );

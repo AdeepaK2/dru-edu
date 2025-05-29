@@ -1,76 +1,103 @@
 'use client';
 
-import React, { useState } from 'react';
-import { UserPlus, Users, CheckCircle, XCircle, BookOpen, Search } from 'lucide-react';
-import { Student, ParentInfo, PaymentInfo } from '@/models/studentSchema';
+import React, { useState, useEffect, useMemo } from 'react';
+import { UserPlus, Users, Search, Edit2, Trash2, XCircle } from 'lucide-react';
+import { Student, StudentDocument } from '@/models/studentSchema';
+import { firestore } from '@/utils/firebase-client';
+import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { Button, ConfirmDialog, Modal, Input, Select } from '@/components/ui';
+import StudentModal from '@/components/modals/StudentModal';
+import { DataCache, NavigationLoader } from '@/utils/performance';
 
 export default function StudentsManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-    // New state for form inputs
-  const [newStudent, setNewStudent] = useState<Omit<Student, 'id'>>({
-    name: '',
-    email: '',
-    phone: '',
-    status: 'Active',
-    coursesEnrolled: 0,
-    enrollmentDate: new Date().toISOString().split('T')[0],
-    avatar: '',
-    parent: {
-      name: '',
-      email: '',
-      phone: ''
-    },
-    payment: {
-      status: 'Pending',
-      method: '',
-      lastPayment: 'N/A'
-    }
-  });
-
-  // Form input change handlers
-  const handleStudentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setNewStudent({
-      ...newStudent,
-      [name]: value
-    });
-  };
-
-  const handleParentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setNewStudent({
-      ...newStudent,
-      parent: {
-        ...newStudent.parent,
-        [name]: value
-      }
-    });
-  };
-
-  const handlePaymentChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setNewStudent({
-      ...newStudent,
-      payment: {
-        ...newStudent.payment,
-        [name]: value
-      }
-    });
-  };  // Submit handler
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<StudentDocument | null>(null);
+  const [students, setStudents] = useState<StudentDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState<StudentDocument | null>(null);
+  const loader = NavigationLoader.getInstance();
+  
+  // Use simple console logging for now
+  const showSuccess = (message: string) => console.log('Success:', message);
+  const showError = (message: string) => console.error('Error:', message);
+  // Fetch students from Firestore with optimized real-time updates
+  useEffect(() => {
+    // Set loading indicator
+    loader.setLoading(true);
     
-    const studentData = {
-      name: newStudent.name,
-      email: newStudent.email,
-      phone: newStudent.phone,
-      status: newStudent.status,
-      coursesEnrolled: newStudent.coursesEnrolled,
-      enrollmentDate: newStudent.enrollmentDate,
-      parent: newStudent.parent,
-      payment: newStudent.payment
+    // Check cache first
+    const cachedStudents = DataCache.get('students');
+    if (cachedStudents) {
+      setStudents(cachedStudents);
+      setLoading(false);
+      loader.setLoading(false);
+    }
+    
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    const fetchStudents = () => {
+      try {
+        const studentsQuery = query(
+          collection(firestore, 'students'),
+          orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(
+          studentsQuery,
+          (snapshot) => {
+            const studentsData: StudentDocument[] = [];
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              studentsData.push({
+                id: doc.id,
+                ...data,
+              } as StudentDocument);
+            });
+            setStudents(studentsData);
+            DataCache.set('students', studentsData, 120); // Cache for 2 minutes
+            setLoading(false);
+            loader.setLoading(false);
+            setError(null);
+            retryCount = 0; // Reset retry count on success
+          },
+          (error) => {
+            console.error('Error fetching students:', error);
+            setLoading(false);
+            
+            if (retryCount < maxRetries) {
+              retryCount++;
+              setTimeout(() => {
+                console.log(`Retrying to fetch students... Attempt ${retryCount}`);
+                fetchStudents();
+              }, 2000 * retryCount); // Exponential backoff
+            } else {
+              setError('Failed to fetch students. Please refresh the page.');
+            }
+          }
+        );
+
+        return unsubscribe;
+      } catch (error) {
+        console.error('Error setting up students listener:', error);
+        setError('Failed to initialize student data connection.');
+        setLoading(false);
+        return () => {};
+      }
     };
+
+    const unsubscribe = fetchStudents();
+    return () => unsubscribe();
+  }, []);
+
+  // Student create handler
+  const handleStudentCreate = async (studentData: Omit<Student, 'id'>) => {
+    setActionLoading('create');
     
     try {
       const response = await fetch('/api/student', {
@@ -78,7 +105,16 @@ export default function StudentsManagement() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(studentData),
+        body: JSON.stringify({
+          ...studentData,
+          status: 'Active', // Default to Active
+          coursesEnrolled: 0, // Default to 0
+          payment: {
+            status: 'Pending',
+            method: '',
+            lastPayment: 'N/A'
+          }
+        }),
       });
       
       if (!response.ok) {
@@ -89,536 +125,347 @@ export default function StudentsManagement() {
       const savedStudent = await response.json();
       console.log('Student created successfully:', savedStudent);
       
-      // Close the modal
       setShowAddModal(false);
-      
-      // Reset the form
-      setNewStudent({
-        name: '',
-        email: '',
-        phone: '',
-        status: 'Active',
-        coursesEnrolled: 0,
-        enrollmentDate: new Date().toISOString().split('T')[0],
-        avatar: '',
-        parent: {
-          name: '',
-          email: '',
-          phone: ''
-        },
-        payment: {
-          status: 'Pending',
-          method: '',
-          lastPayment: 'N/A'
-        }
-      });
-        // Show success message
-      alert(`Student "${savedStudent.name}" has been created successfully! A welcome email with login credentials has been sent to ${savedStudent.email}.`);
-      
-      // Optionally, refresh the page or update the students list
-      window.location.reload();
+      showSuccess(`Student "${savedStudent.name}" has been created successfully! A welcome email with login credentials has been sent to ${savedStudent.email}.`);
       
     } catch (error: any) {
       console.error('Error saving student data:', error);
-      alert(`Error: ${error.message || 'An unexpected error occurred'}`);
+      showError(`Error: ${error.message || 'An unexpected error occurred'}`);
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  // Dummy student data
-  const students = [
-    {
-      id: 1,
-      name: 'John Doe',
-      email: 'john.doe@email.com',
-      phone: '+1 234 567 8900',
-      enrollmentDate: '2024-01-15',
-      status: 'Active',
-      coursesEnrolled: 5,
-      avatar: 'JD',
-      // Added parent information
-      parent: {
-        name: 'Robert Doe',
-        email: 'robert.doe@email.com',
-        phone: '+1 234 567 8910'
-      },
-      // Added payment information
-      payment: {
-        status: 'Paid',
-        method: 'Credit Card',
-        lastPayment: '2024-05-01'
-      }
-    },    {
-      id: 2,
-      name: 'Jane Smith',
-      email: 'jane.smith@email.com',
-      phone: '+1 234 567 8901',
-      enrollmentDate: '2024-02-20',
-      status: 'Active',
-      coursesEnrolled: 3,
-      avatar: 'JS',
-      parent: {
-        name: 'Mary Smith',
-        email: 'mary.smith@email.com',
-        phone: '+1 234 567 8931'
-      },
-      payment: {
-        status: 'Paid',
-        method: 'Bank Transfer',
-        lastPayment: '2024-04-25'
-      }
-    },
-    {
-      id: 3,
-      name: 'Mike Johnson',
-      email: 'mike.johnson@email.com',
-      phone: '+1 234 567 8902',
-      enrollmentDate: '2024-03-10',
-      status: 'Suspended',
-      coursesEnrolled: 2,
-      avatar: 'MJ',
-      parent: {
-        name: 'Thomas Johnson',
-        email: 'thomas.johnson@email.com',
-        phone: '+1 234 567 8922'
-      },
-      payment: {
-        status: 'Overdue',
-        method: 'Credit Card',
-        lastPayment: '2024-01-15'
-      }
-    },
-    {
-      id: 4,
-      name: 'Sarah Wilson',
-      email: 'sarah.wilson@email.com',
-      phone: '+1 234 567 8903',
-      enrollmentDate: '2024-01-25',
-      status: 'Active',
-      coursesEnrolled: 7,
-      avatar: 'SW',
-      parent: {
-        name: 'James Wilson',
-        email: 'james.wilson@email.com',
-        phone: '+1 234 567 8943'
-      },
-      payment: {
-        status: 'Paid',
-        method: 'PayPal',
-        lastPayment: '2024-05-10'
-      }
-    },
-    {
-      id: 5,
-      name: 'David Brown',
-      email: 'david.brown@email.com',
-      phone: '+1 234 567 8904',
-      enrollmentDate: '2024-04-05',
-      status: 'Active',
-      coursesEnrolled: 1,
-      avatar: 'DB',
-      parent: {
-        name: 'Linda Brown',
-        email: 'linda.brown@email.com',
-        phone: '+1 234 567 8954'
-      },
-      payment: {
-        status: 'Pending',
-        method: 'Not Selected',
-        lastPayment: 'N/A'
-      }
-    }
-  ];
+  // Edit student handler
+  const handleEdit = (student: StudentDocument) => {
+    setEditingStudent(student);
+    setShowEditModal(true);
+  };
 
-  const filteredStudents = students.filter(student =>
-    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Student update handler
+  const handleStudentUpdate = async (studentData: Omit<Student, 'id'>) => {
+    if (!editingStudent) return;
+    
+    setActionLoading(`edit-${editingStudent.id}`);
+    
+    try {
+      const response = await fetch(`/api/student?id=${editingStudent.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: studentData.name,
+          email: studentData.email,
+          phone: studentData.phone,
+          enrollmentDate: studentData.enrollmentDate,
+          parent: studentData.parent
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update student');
+      }
+      
+      setShowEditModal(false);
+      setEditingStudent(null);
+      showSuccess('Student updated successfully!');
+      
+    } catch (error: any) {
+      console.error('Error updating student:', error);
+      showError(`Error: ${error.message || 'An unexpected error occurred'}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Delete student handler
+  const handleDeleteClick = (student: StudentDocument) => {
+    setStudentToDelete(student);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!studentToDelete) return;
+    
+    setActionLoading(`delete-${studentToDelete.id}`);
+    setShowDeleteConfirm(false);
+    
+    try {
+      const response = await fetch(`/api/student?id=${studentToDelete.id}`, {
+        method: 'DELETE',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete student');
+      }
+      
+      showSuccess(`Student "${studentToDelete.name}" has been deleted successfully.`);
+      
+    } catch (error: any) {
+      console.error('Error deleting student:', error);
+      showError(`Error: ${error.message || 'An unexpected error occurred'}`);
+    } finally {
+      setActionLoading(null);
+      setStudentToDelete(null);
+    }
+  };
+
+  // Optimized filtering with memoization for better performance
+  const filteredStudents = useMemo(() => {
+    if (!searchTerm.trim()) return students;
+    
+    const lowerSearchTerm = searchTerm.toLowerCase();
+    return students.filter(student =>
+      student.name.toLowerCase().includes(lowerSearchTerm) ||
+      student.email.toLowerCase().includes(lowerSearchTerm) ||
+      student.parent.name.toLowerCase().includes(lowerSearchTerm) ||
+      student.phone.includes(searchTerm)
+    );
+  }, [students, searchTerm]);
+
+  // Memoized statistics for better performance
+  const studentStats = useMemo(() => ({
+    total: students.length
+  }), [students]);
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Student Management</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Manage your students, their enrollments, and account status
-          </p>
+      {/* Loading State */}
+      {loading && (
+        <div className="flex justify-center items-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          <span className="ml-2 text-gray-600 dark:text-gray-400">Loading students...</span>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="mt-4 sm:mt-0 bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg transition-colors flex items-center"
-        >
-          <UserPlus className="w-5 h-5 mr-2" />
-          Add Student
-        </button>
-      </div>
+      )}
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
-              <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Students</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{students.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
-              <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Students</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {students.filter(s => s.status === 'Active').length}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-red-100 dark:bg-red-900 rounded-lg">
-              <XCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Suspended</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {students.filter(s => s.status === 'Suspended').length}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
-              <BookOpen className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Avg Enrollments</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {Math.round(students.reduce((acc, s) => acc + s.coursesEnrolled, 0) / students.length)}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
-          <div className="flex-1">
-            <label htmlFor="search" className="sr-only">Search students</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                id="search"
-                type="text"
-                placeholder="Search by name or email..."
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex space-x-2">
-            <select className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option>All Status</option>
-              <option>Active</option>
-              <option>Suspended</option>
-            </select>
-            <button className="bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg transition-colors">
-              Export
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Students Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-700">              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Student
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Contact
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Parent
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Enrollment Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Courses
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Payment
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {filteredStudents.map((student) => (
-                <tr key={student.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                        <span className="text-sm font-medium text-primary-600 dark:text-primary-400">
-                          {student.avatar}
-                        </span>
-                      </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {student.name}
-                        </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          ID: {student.id}
-                        </div>
-                      </div>
-                    </div>
-                  </td>                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900 dark:text-white">{student.email}</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">{student.phone}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900 dark:text-white">{student.parent.name}</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">{student.parent.phone}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {new Date(student.enrollmentDate).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {student.coursesEnrolled}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      student.status === 'Active' 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                    }`}>
-                      {student.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                      student.payment.status === 'Paid' 
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : student.payment.status === 'Pending'
-                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                        : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                    }`}>
-                      {student.payment.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button className="text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300">
-                        View
-                      </button>
-                      <button className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300">
-                        Edit
-                      </button>
-                      <button className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300">
-                        {student.status === 'Active' ? 'Suspend' : 'Activate'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Add Student Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-              <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setShowAddModal(false)}></div>
-            </div>
-            <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-              <form onSubmit={handleSubmit}>
-                <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Add New Student</h3>
-                  <div className="space-y-4">
-                    {/* Student Information */}
-                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">Student Information</h4>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Full Name
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={newStudent.name}
-                        onChange={handleStudentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter student full name"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Email Address
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={newStudent.email}
-                        onChange={handleStudentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter student email address"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={newStudent.phone}
-                        onChange={handleStudentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter student phone number"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Status
-                      </label>
-                      <select
-                        name="status"
-                        value={newStudent.status}
-                        onChange={handleStudentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      >
-                        <option value="Active">Active</option>
-                        <option value="Suspended">Suspended</option>
-                        <option value="Inactive">Inactive</option>
-                      </select>
-                    </div>
-
-                    {/* Parent Information */}
-                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 pt-4">Parent Information</h4>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Parent Name
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={newStudent.parent.name}
-                        onChange={handleParentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter parent's full name"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Parent Email
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={newStudent.parent.email}
-                        onChange={handleParentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter parent's email address"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Parent Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={newStudent.parent.phone}
-                        onChange={handleParentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        placeholder="Enter parent's phone number"
-                        required
-                      />
-                    </div>
-
-                    {/* Payment Information */}
-                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 pt-4">Payment Information</h4>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Payment Status
-                      </label>
-                      <select
-                        name="status"
-                        value={newStudent.payment.status}
-                        onChange={handlePaymentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      >
-                        <option value="Pending">Pending</option>
-                        <option value="Paid">Paid</option>
-                        <option value="Overdue">Overdue</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        Payment Method
-                      </label>
-                      <select
-                        name="method"
-                        value={newStudent.payment.method}
-                        onChange={handlePaymentChange}
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      >
-                        <option value="">Select Payment Method</option>
-                        <option value="Credit Card">Credit Card</option>
-                        <option value="Bank Transfer">Bank Transfer</option>
-                        <option value="PayPal">PayPal</option>
-                        <option value="Cash">Cash</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button 
-                    type="submit"
-                    className="w-full inline-flex justify-center rounded-lg border border-transparent shadow-sm px-4 py-2 bg-primary-600 text-base font-medium text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Add Student
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddModal(false)}
-                    className="mt-3 w-full inline-flex justify-center rounded-lg border border-gray-300 dark:border-gray-600 shadow-sm px-4 py-2 bg-white dark:bg-gray-800 text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-700 rounded-lg p-4">
+          <div className="flex">
+            <XCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
+              <p className="mt-1 text-sm text-red-700 dark:text-red-300">{error}</p>
+              <Button 
+                onClick={() => window.location.reload()}
+                variant="outline"
+                size="sm"
+                className="mt-2"
+              >
+                Retry
+              </Button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Main Content */}
+      {!loading && !error && (
+        <>
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Student Management</h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Manage your students, their enrollments, and account status
+              </p>
+            </div>            <Button
+              onClick={() => setShowAddModal(true)}
+              leftIcon={<UserPlus className="w-4 h-4" />}
+              className="mt-4 sm:mt-0"
+            >
+              Add Student
+            </Button>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+              <div className="flex items-center">
+                <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                  <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Students</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{studentStats.total}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Search and Filters */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0 sm:space-x-4">
+              <div className="flex-1">                <Input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  leftIcon={<Search className="w-4 h-4" />}
+                />
+              </div>              <div className="flex space-x-2">
+                <Select 
+                  defaultValue="all"
+                  options={[
+                    { value: "all", label: "All Status" },
+                    { value: "active", label: "Active" },
+                    { value: "suspended", label: "Suspended" }
+                  ]}
+                />
+                <Button variant="outline">
+                  Export
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Students Table */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead className="bg-gray-50 dark:bg-gray-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Student
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Contact
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Parent
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Enrollment Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                  {filteredStudents.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center">
+                        <div className="flex flex-col items-center">
+                          <Users className="w-12 h-12 text-gray-400 mb-4" />
+                          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No students found</h3>
+                          <p className="text-gray-500 dark:text-gray-400">
+                            {searchTerm ? 'Try adjusting your search criteria.' : 'Get started by adding your first student.'}
+                          </p>                          {!searchTerm && (
+                            <Button
+                              onClick={() => setShowAddModal(true)}
+                              leftIcon={<UserPlus className="w-4 h-4" />}
+                              className="mt-4"
+                            >
+                              Add First Student
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredStudents.map((student) => (
+                      <tr key={student.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center">
+                            <div className="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                              <span className="text-sm font-medium text-primary-600 dark:text-primary-400">
+                                {student.avatar || student.name.charAt(0).toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="ml-4">
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                {student.name}
+                              </div>
+                              <div className="text-sm text-gray-500 dark:text-gray-400">
+                                ID: {student.id}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-white">{student.email}</div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">{student.phone}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900 dark:text-white">{student.parent.name}</div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">{student.parent.phone}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                          {student.enrollmentDate ? new Date(student.enrollmentDate).toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">                          <div className="flex space-x-3">
+                            <Button
+                              onClick={() => handleEdit(student)}
+                              variant="outline"
+                              size="sm"
+                              leftIcon={<Edit2 className="w-4 h-4" />}
+                              isLoading={actionLoading === `edit-${student.id}`}
+                              disabled={!!actionLoading}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              onClick={() => handleDeleteClick(student)}
+                              variant="danger"
+                              size="sm"
+                              leftIcon={<Trash2 className="w-4 h-4" />}
+                              isLoading={actionLoading === `delete-${student.id}`}
+                              disabled={!!actionLoading}
+                            >
+                              Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Add Student Modal */}
+      <StudentModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSubmit={handleStudentCreate}
+        title="Add New Student"
+        submitButtonText="Add Student"
+        loading={actionLoading === 'create'}
+      />
+
+      {/* Edit Student Modal */}
+      <StudentModal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setEditingStudent(null);
+        }}
+        onSubmit={handleStudentUpdate}
+        title={`Edit Student: ${editingStudent?.name || ''}`}
+        submitButtonText="Update Student"
+        loading={actionLoading === `edit-${editingStudent?.id}`}
+        initialData={editingStudent || undefined}
+      />
+
+      {/* Delete Confirmation Dialog */}      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setStudentToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Student"
+        description={`Are you sure you want to delete student "${studentToDelete?.name}"? This action cannot be undone and will also remove their Firebase authentication account.`}
+        confirmText="Delete Student"
+        variant="danger"
+      />
     </div>
   );
 }
