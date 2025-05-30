@@ -9,18 +9,21 @@ import Sidebar from '@/components/adminDashboard/Sidebar';
 import AdminLoadingBar from '@/components/adminDashboard/AdminLoadingBar';
 import { prefetchAdminPages } from '@/utils/performance';
 import { MelbourneDate } from '@/utils/melbourne-date';
+import { useNavigationLoading } from '@/hooks/useNavigationLoading';
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
-}) {  const [loading, setLoading] = useState(true);
+}) {  
+  const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('Admin User');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [currentTime, setCurrentTime] = useState(MelbourneDate.now());
   const [authChecked, setAuthChecked] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { setLoading: setNavLoading } = useNavigationLoading();
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -63,10 +66,10 @@ export default function AdminLayout({
             window.location.href = '/admin/login';
             return;
           }
-          
-          setAdminName(user.displayName || user.email || 'Admin');
+            setAdminName(user.displayName || user.email || 'Admin');
           setAuthChecked(true);
           setLoading(false);
+          setNavLoading(false); // Complete navigation loading when auth is complete
         } catch (error) {
           console.error("Error verifying admin status:", error);
           window.location.href = '/admin/login';
@@ -96,9 +99,8 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Loading Bar */}
-      <AdminLoadingBar />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">      {/* Loading Bar - Temporarily disabled for better navigation */}
+      {/* <AdminLoadingBar /> */}
       
       {/* Top Navbar */}
       <Navbar 

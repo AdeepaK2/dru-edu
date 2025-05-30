@@ -8,6 +8,7 @@ export { ToastProvider, useToast } from './ToastProvider';
 // Form Components
 export { default as Input } from './form/Input';
 export { default as Select } from './form/Select';
+export { default as PhoneInput } from './form/PhoneInput';
 
 // Export types
 export type { ToastProps } from './Toast';

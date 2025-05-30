@@ -15,14 +15,15 @@ import {
   Upload
 } from 'lucide-react';
 import { NavigationLoader } from '@/utils/performance';
+import { useNavigationLoading } from '@/hooks/useNavigationLoading';
 
 export default function AdminDashboard() {
-  const loader = NavigationLoader.getInstance();
+  const { setLoading: setNavLoading } = useNavigationLoading();
 
   // Clear loading state when dashboard loads
   useEffect(() => {
-    loader.setLoading(false);
-  }, [loader]);
+    setNavLoading(false);
+  }, [setNavLoading]);
 
   // Dummy data for dashboard
   const stats = {

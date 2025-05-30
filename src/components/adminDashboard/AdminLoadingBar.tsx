@@ -1,39 +1,48 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { NavigationLoader } from '@/utils/performance';
 
 const AdminLoadingBar: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const router = useRouter();
 
   useEffect(() => {
     const loader = NavigationLoader.getInstance();
+    let progressInterval: NodeJS.Timeout | null = null;
+
     const unsubscribe = loader.subscribe((isLoading) => {
       setLoading(isLoading);
       if (isLoading) {
         setProgress(20);
         // Simulate progress
-        const interval = setInterval(() => {
+        progressInterval = setInterval(() => {
           setProgress(prev => {
             if (prev >= 90) {
-              clearInterval(interval);
-              return 90;
+              return 90; // Stay at 90% until navigation completes
             }
-            return prev + Math.random() * 30;
+            return prev + Math.random() * 15 + 5; // More consistent progress
           });
-        }, 200);
-        
-        return () => clearInterval(interval);
+        }, 150);
       } else {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+          progressInterval = null;
+        }
         setProgress(100);
-        setTimeout(() => setProgress(0), 200);
+        setTimeout(() => {
+          setProgress(0);
+        }, 300);
       }
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+    };
   }, []);
 
   if (!loading && progress === 0) return null;

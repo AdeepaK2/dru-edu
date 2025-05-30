@@ -58,7 +58,6 @@ export default function Modal({
     xl: 'sm:max-w-4xl',
     full: 'sm:max-w-7xl'
   };
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -70,9 +69,9 @@ export default function Modal({
         />
         
         {/* Modal panel */}
-        <div className={`inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${sizeClasses[size]} ${className}`}>
+        <div className={`inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:w-full ${sizeClasses[size]} mx-4 ${className}`}>
           {/* Header */}
-          <div className="bg-white dark:bg-gray-800 px-4 pt-5 pb-4 sm:p-6 sm:pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="bg-white dark:bg-gray-800 px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center justify-between">
               <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">
                 {title}
@@ -89,7 +88,7 @@ export default function Modal({
           </div>
           
           {/* Content */}
-          <div className="bg-white dark:bg-gray-800">
+          <div className="bg-white dark:bg-gray-800 max-h-[calc(100vh-8rem)] overflow-y-auto">
             {children}
           </div>
         </div>

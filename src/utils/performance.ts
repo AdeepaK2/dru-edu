@@ -4,6 +4,7 @@ export class NavigationLoader {
   private static instance: NavigationLoader;
   private isLoading = false;
   private loadingCallbacks: Set<(loading: boolean) => void> = new Set();
+  private loadingTimeout: NodeJS.Timeout | null = null;
 
   static getInstance(): NavigationLoader {
     if (!NavigationLoader.instance) {
@@ -18,14 +19,43 @@ export class NavigationLoader {
   }
 
   setLoading(loading: boolean) {
-    if (this.isLoading !== loading) {
-      this.isLoading = loading;
-      this.loadingCallbacks.forEach(callback => callback(loading));
+    // Clear any existing timeout
+    if (this.loadingTimeout) {
+      clearTimeout(this.loadingTimeout);
+      this.loadingTimeout = null;
+    }
+
+    if (loading) {
+      // Set loading immediately
+      if (this.isLoading !== loading) {
+        this.isLoading = loading;
+        this.loadingCallbacks.forEach(callback => callback(loading));
+      }
+    } else {
+      // For setLoading(false), add a small delay to prevent flicker
+      this.loadingTimeout = setTimeout(() => {
+        if (this.isLoading !== loading) {
+          this.isLoading = loading;
+          this.loadingCallbacks.forEach(callback => callback(loading));
+        }
+      }, 50);
     }
   }
 
   getLoading(): boolean {
     return this.isLoading;
+  }
+
+  // Auto-complete loading after a timeout (fallback)
+  autoComplete(timeoutMs: number = 3000) {
+    if (this.loadingTimeout) {
+      clearTimeout(this.loadingTimeout);
+    }
+    this.loadingTimeout = setTimeout(() => {
+      if (this.isLoading) {
+        this.setLoading(false);
+      }
+    }, timeoutMs);
   }
 }
 

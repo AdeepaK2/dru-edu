@@ -1,197 +1,279 @@
 'use client';
 
-import React, { useState } from 'react';
-
-// Dummy data for teachers
-const teachersData = [
-  {
-    id: 1,
-    name: 'Dr. Jane Smith',
-    email: 'jane.smith@druedu.com',
-    subject: 'Mathematics',
-    students: 45,
-    classes: 4,
-    joined: '2023-04-15',
-    status: 'Active',
-    imageUrl: 'https://randomuser.me/api/portraits/women/22.jpg',
-    qualifications: 'Ph.D. in Mathematics, Stanford University',
-    bio: 'Dr. Smith specializes in advanced calculus and has 10 years of teaching experience.'
-  },
-  {
-    id: 2,
-    name: 'Prof. John Wilson',
-    email: 'john.wilson@druedu.com',
-    subject: 'Physics',
-    students: 38,
-    classes: 3,
-    joined: '2023-06-22',
-    status: 'Active',
-    imageUrl: 'https://randomuser.me/api/portraits/men/32.jpg',
-    qualifications: 'Ph.D. in Physics, MIT',
-    bio: 'Prof. Wilson is a theoretical physicist with expertise in quantum mechanics.'
-  },
-  {
-    id: 3,
-    name: 'Dr. Emily Johnson',
-    email: 'emily.johnson@druedu.com',
-    subject: 'Biology',
-    students: 52,
-    classes: 5,
-    joined: '2023-03-10',
-    status: 'On Leave',
-    imageUrl: 'https://randomuser.me/api/portraits/women/45.jpg',
-    qualifications: 'Ph.D. in Molecular Biology, Harvard',
-    bio: 'Dr. Johnson focuses on genetics and cellular biology research and education.'
-  },
-  {
-    id: 4,
-    name: 'Prof. Michael Lee',
-    email: 'michael.lee@druedu.com',
-    subject: 'Chemistry',
-    students: 41,
-    classes: 4,
-    joined: '2023-08-05',
-    status: 'Active',
-    imageUrl: 'https://randomuser.me/api/portraits/men/52.jpg',
-    qualifications: 'Ph.D. in Chemistry, UC Berkeley',
-    bio: 'Prof. Lee specializes in organic chemistry and has published numerous research papers.'
-  },
-  {
-    id: 5,
-    name: 'Dr. Sarah Parker',
-    email: 'sarah.parker@druedu.com',
-    subject: 'Computer Science',
-    students: 60,
-    classes: 6,
-    joined: '2023-01-18',
-    status: 'Active',
-    imageUrl: 'https://randomuser.me/api/portraits/women/67.jpg',
-    qualifications: 'Ph.D. in Computer Science, Carnegie Mellon',
-    bio: 'Dr. Parker is an expert in artificial intelligence and machine learning.'
-  }
-];
+import React, { useState, useMemo } from 'react';
+import { UserPlus, Users, Search, Edit2, Trash2, GraduationCap, XCircle } from 'lucide-react';
+import { Teacher, TeacherDocument, TeacherData } from '@/models/teacherSchema';
+import { firestore } from '@/utils/firebase-client';
+import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
+import { Button, ConfirmDialog, Input } from '@/components/ui';
+import TeacherModal from '@/components/modals/TeacherModal';
+import { useCachedData } from '@/hooks/useAdminCache';
 
 export default function TeacherManagement() {
-  const [teachers, setTeachers] = useState(teachersData);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTeacher, setSelectedTeacher] = useState<typeof teachersData[0] | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingTeacher, setEditingTeacher] = useState<TeacherDocument | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [teacherToDelete, setTeacherToDelete] = useState<TeacherDocument | null>(null);
 
-  const filteredTeachers = teachers.filter(teacher => {
-    return (
-      teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.subject.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  // Use cached data hook for efficient data management
+  const { data: teachers = [], loading, error, refetch } = useCachedData<TeacherDocument[]>(
+    'teachers',
+    async () => {
+      return new Promise<TeacherDocument[]>((resolve, reject) => {
+        const teachersQuery = query(
+          collection(firestore, 'teachers'),
+          orderBy('createdAt', 'desc')
+        );
 
-  const handleOpenModal = (teacher: typeof teachersData[0] | null, isEdit = false) => {
-    setSelectedTeacher(teacher);
-    setEditMode(isEdit);
-    setModalOpen(true);
-  };
+        const unsubscribe = onSnapshot(
+          teachersQuery,
+          (snapshot) => {
+            const teachersData: TeacherDocument[] = [];
+            snapshot.forEach((doc) => {
+              const data = doc.data();
+              teachersData.push({
+                id: doc.id,
+                ...data,
+              } as TeacherDocument);
+            });
+            resolve(teachersData);
+            unsubscribe(); // Unsubscribe after first load for caching
+          },
+          (error) => {
+            reject(error);
+            unsubscribe();
+          }
+        );
+      });
+    },
+    { ttl: 120 } // Cache for 2 minutes
+  );
 
-  const handleCloseModal = () => {
-    setSelectedTeacher(null);
-    setModalOpen(false);
-    setEditMode(false);
-  };
+  // Use simple console logging for now
+  const showSuccess = (message: string) => console.log('Success:', message);
+  const showError = (message: string) => console.error('Error:', message);
+  // Teacher create handler
+  const handleTeacherCreate = async (teacherData: TeacherData) => {
+    setActionLoading('create');
+    
+    try {
+      const response = await fetch('/api/teacher', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...teacherData,
+          avatar: '',
+          classesAssigned: 0,
+          studentsCount: 0,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create teacher');
+      }
 
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case 'Active':
-        return 'bg-green-100 text-green-800';
-      case 'On Leave':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'Inactive':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      const savedTeacher = await response.json();
+      showSuccess('Teacher created successfully!');
+      setShowAddModal(false);
+      refetch(); // Refresh data
+    } catch (error) {
+      console.error('Error creating teacher:', error);
+      showError(error instanceof Error ? error.message : 'Failed to create teacher');
+    } finally {
+      setActionLoading(null);
     }
   };
 
+  // Teacher update handler
+  const handleTeacherUpdate = async (teacherData: TeacherData) => {
+    if (!editingTeacher) return;
+    
+    setActionLoading('update');
+    
+    try {
+      const response = await fetch('/api/teacher', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: editingTeacher.id,
+          ...teacherData,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update teacher');
+      }
+
+      showSuccess('Teacher updated successfully!');
+      setShowEditModal(false);
+      setEditingTeacher(null);
+      refetch(); // Refresh data
+    } catch (error) {
+      console.error('Error updating teacher:', error);
+      showError(error instanceof Error ? error.message : 'Failed to update teacher');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Teacher delete handler
+  const handleTeacherDelete = async () => {
+    if (!teacherToDelete) return;
+    
+    setActionLoading('delete');
+    
+    try {
+      const response = await fetch('/api/teacher', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: teacherToDelete.id }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete teacher');
+      }
+
+      showSuccess('Teacher deleted successfully!');
+      setShowDeleteConfirm(false);
+      setTeacherToDelete(null);
+      refetch(); // Refresh data
+    } catch (error) {
+      console.error('Error deleting teacher:', error);
+      showError(error instanceof Error ? error.message : 'Failed to delete teacher');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Filter teachers based on search term
+  const filteredTeachers = useMemo(() => {
+    if (!teachers) return [];
+    
+    return teachers.filter(teacher =>
+      teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      teacher.phone.includes(searchTerm) ||
+      teacher.id.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [teachers, searchTerm]);
+
+  // Handle edit button click
+  const handleEditClick = (teacher: TeacherDocument) => {
+    setEditingTeacher(teacher);
+    setShowEditModal(true);
+  };
+
+  // Handle delete button click
+  const handleDeleteClick = (teacher: TeacherDocument) => {
+    setTeacherToDelete(teacher);
+    setShowDeleteConfirm(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="w-16 h-16 border-t-4 border-primary-600 border-solid rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-secondary-600 dark:text-secondary-300 font-medium">Loading teachers...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+      {/* Header */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Teacher Management</h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Manage faculty members, assign classes, and track performance
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Teachers Management
+            </h1>
+            <p className="text-gray-600 dark:text-gray-300">
+              Manage teacher records, assignments, and information
             </p>
           </div>
-          <div className="mt-4 md:mt-0">
-            <button
-              onClick={() => handleOpenModal(null, true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-            >
-              <span className="flex items-center">
-                <span className="material-symbols-outlined mr-1 text-sm">add</span>
-                Add Teacher
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-lg">
+              <GraduationCap className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
+              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                Total: {teachers?.length || 0}
               </span>
-            </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="material-symbols-outlined text-gray-400">search</span>
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+          <div className="flex">
+            <XCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
+              <p className="mt-1 text-sm text-red-700 dark:text-red-300">{error.message}</p>
             </div>
-            <input
+          </div>
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
               type="text"
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 transition duration-150 ease-in-out sm:text-sm"
-              placeholder="Search teachers by name, email, or subject..."
+              placeholder="Search teachers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
-            <select className="border border-gray-300 rounded-md p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-              <option value="">Filter by Subject</option>
-              <option value="mathematics">Mathematics</option>
-              <option value="physics">Physics</option>
-              <option value="biology">Biology</option>
-              <option value="chemistry">Chemistry</option>
-              <option value="computer-science">Computer Science</option>
-            </select>
-            <select className="border border-gray-300 rounded-md p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white">
-              <option value="">Filter by Status</option>
-              <option value="active">Active</option>
-              <option value="on-leave">On Leave</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
+          <Button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center space-x-2"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add Teacher</span>
+          </Button>
         </div>
       </div>
 
-      {/* Teacher List */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+      {/* Teachers Table */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-700">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Teacher
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Subject
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Contact
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Students
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Subject/Experience
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                  Classes
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Status
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Classes
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
@@ -200,52 +282,55 @@ export default function TeacherManagement() {
               {filteredTeachers.map((teacher) => (
                 <tr key={teacher.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <img className="h-10 w-10 rounded-full object-cover" src={teacher.imageUrl} alt={teacher.name} />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        {teacher.name}
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">{teacher.name}</div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.email}</div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">
+                        ID: {teacher.id}
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {teacher.subject}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {teacher.students}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {teacher.classes}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900 dark:text-white">{teacher.email}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.phone}</div>
+                  </td>                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900 dark:text-white">{teacher.subject || 'Various'}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.qualifications || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeColor(teacher.status)}`}>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      teacher.status === 'Active' 
+                        ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+                        : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300'
+                    }`}>
                       {teacher.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleOpenModal(teacher)}
-                        className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300"
-                        title="View Details"
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900 dark:text-white">
+                      {teacher.classesAssigned || 0} classes
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditClick(teacher)}
+                        disabled={actionLoading === 'update'}
                       >
-                        <span className="material-symbols-outlined">visibility</span>
-                      </button>
-                      <button
-                        onClick={() => handleOpenModal(teacher, true)}
-                        className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
-                        title="Edit Teacher"
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteClick(teacher)}
+                        disabled={actionLoading === 'delete'}
+                        className="text-red-600 hover:text-red-700"
                       >
-                        <span className="material-symbols-outlined">edit</span>
-                      </button>
-                      <button
-                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                        title="Remove Teacher"
-                      >
-                        <span className="material-symbols-outlined">delete</span>
-                      </button>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -253,186 +338,60 @@ export default function TeacherManagement() {
             </tbody>
           </table>
         </div>
+
         {filteredTeachers.length === 0 && (
-          <div className="text-center py-10">
-            <p className="text-gray-500 dark:text-gray-400">No teachers found matching your search criteria.</p>
+          <div className="text-center py-12">
+            <GraduationCap className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No teachers found</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {searchTerm ? 'Try adjusting your search criteria' : 'Get started by adding a new teacher'}
+            </p>
           </div>
         )}
-      </div>
+      </div>      {/* Add Teacher Modal */}
+      {showAddModal && (
+        <TeacherModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSubmit={handleTeacherCreate}
+          loading={actionLoading === 'create'}
+          title="Add New Teacher"
+          submitButtonText="Add Teacher"
+        />
+      )}
 
-      {/* Teacher Modal */}
-      {modalOpen && selectedTeacher && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white">
-                  {editMode ? (selectedTeacher ? 'Edit Teacher' : 'Add New Teacher') : 'Teacher Details'}
-                </h3>
-                <button onClick={handleCloseModal} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
+      {/* Edit Teacher Modal */}
+      {showEditModal && editingTeacher && (
+        <TeacherModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditingTeacher(null);
+          }}
+          onSubmit={handleTeacherUpdate}
+          loading={actionLoading === 'update'}
+          title="Edit Teacher"
+          submitButtonText="Update Teacher"
+          initialData={editingTeacher}
+        />
+      )}
 
-              {editMode ? (
-                <form className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Name</label>
-                      <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        defaultValue={selectedTeacher?.name || ''}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
-                      <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        defaultValue={selectedTeacher?.email || ''}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="subject" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Subject</label>
-                      <input
-                        type="text"
-                        id="subject"
-                        name="subject"
-                        defaultValue={selectedTeacher?.subject || ''}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="status" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
-                      <select
-                        id="status"
-                        name="status"
-                        defaultValue={selectedTeacher?.status || 'Active'}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      >
-                        <option value="Active">Active</option>
-                        <option value="On Leave">On Leave</option>
-                        <option value="Inactive">Inactive</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor="qualifications" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Qualifications</label>
-                      <input
-                        type="text"
-                        id="qualifications"
-                        name="qualifications"
-                        defaultValue={selectedTeacher?.qualifications || ''}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Profile Image URL</label>
-                      <input
-                        type="text"
-                        id="imageUrl"
-                        name="imageUrl"
-                        defaultValue={selectedTeacher?.imageUrl || ''}
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="bio" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Bio</label>
-                    <textarea
-                      id="bio"
-                      name="bio"
-                      rows={3}
-                      defaultValue={selectedTeacher?.bio || ''}
-                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                    ></textarea>
-                  </div>
-                  <div className="flex justify-end space-x-2 pt-4">
-                    <button
-                      type="button"
-                      onClick={handleCloseModal}
-                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                    >
-                      {selectedTeacher ? 'Update Teacher' : 'Add Teacher'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-4">
-                    <img 
-                      src={selectedTeacher.imageUrl} 
-                      alt={selectedTeacher.name}
-                      className="h-24 w-24 rounded-full object-cover border-4 border-blue-100" 
-                    />
-                    <div>
-                      <h4 className="text-xl font-semibold text-gray-900 dark:text-white">{selectedTeacher.name}</h4>
-                      <p className="text-blue-600 dark:text-blue-400">{selectedTeacher.subject} Instructor</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">{selectedTeacher.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 py-2">
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Students</p>
-                      <p className="text-xl font-semibold text-gray-900 dark:text-white">{selectedTeacher.students}</p>
-                    </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Classes</p>
-                      <p className="text-xl font-semibold text-gray-900 dark:text-white">{selectedTeacher.classes}</p>
-                    </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Status</p>
-                      <p className="text-xl font-semibold text-gray-900 dark:text-white">{selectedTeacher.status}</p>
-                    </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Joined</p>
-                      <p className="text-xl font-semibold text-gray-900 dark:text-white">{new Date(selectedTeacher.joined).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                    <h5 className="font-medium text-gray-900 dark:text-white mb-2">Qualifications</h5>
-                    <p className="text-gray-700 dark:text-gray-300">{selectedTeacher.qualifications}</p>
-                  </div>
-
-                  <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                    <h5 className="font-medium text-gray-900 dark:text-white mb-2">Bio</h5>
-                    <p className="text-gray-700 dark:text-gray-300">{selectedTeacher.bio}</p>
-                  </div>
-
-                  <div className="flex justify-end space-x-2 pt-4">
-                    <button
-                      onClick={handleCloseModal}
-                      className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 transition-colors dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
-                    >
-                      Close
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleCloseModal();
-                        handleOpenModal(selectedTeacher, true);
-                      }}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && teacherToDelete && (
+        <ConfirmDialog
+          isOpen={showDeleteConfirm}
+          onClose={() => {
+            setShowDeleteConfirm(false);
+            setTeacherToDelete(null);
+          }}
+          onConfirm={handleTeacherDelete}
+          isLoading={actionLoading === 'delete'}
+          title="Delete Teacher"
+          description={`Are you sure you want to delete ${teacherToDelete.name}? This action cannot be undone.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          variant="danger"
+        />
       )}
     </div>
   );
