@@ -12,7 +12,8 @@ import {
   CreditCard, 
   FileQuestion, 
   Settings, 
-  LogOut 
+  LogOut,
+  Library
 } from 'lucide-react';
 
 // Define sidebar menu items with Lucide icons
@@ -20,6 +21,7 @@ const menuItems = [
   { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/admin' },
   { label: 'Students', icon: <Users size={20} />, path: '/admin/students' },
   { label: 'Teachers', icon: <GraduationCap size={20} />, path: '/admin/teachers' },
+  { label: 'Subjects', icon: <Library size={20} />, path: '/admin/subjects' },
   { label: 'Classes', icon: <BookOpen size={20} />, path: '/admin/classes' },
   { label: 'Video Portal', icon: <Video size={20} />, path: '/admin/videos' },
   { label: 'Transactions', icon: <CreditCard size={20} />, path: '/admin/transactions' },

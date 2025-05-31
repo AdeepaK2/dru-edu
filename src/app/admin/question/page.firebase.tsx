@@ -1,12 +1,22 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { getAuth } from 'firebase/auth';
-import { firestore } from '@/utils/firebase-client';
 import Link from 'next/link';
-import { questionService, questionBankService } from '@/apiservices/questionBankFirestoreService';
-import { Question, QuestionBank, MCQQuestion, EssayQuestion } from '@/models/questionBankSchema';
+import Image from 'next/image';
+import { 
+  Question, 
+  MCQQuestion, 
+  EssayQuestion, 
+  QuestionBank 
+} from '@/models/questionBankSchema';
+import { 
+  questionService, 
+  questionBankService 
+} from '@/apiservices/questionBankFirestoreService';
 import QuestionFormWithFirebase from '@/components/questions/QuestionFormWithFirebase';
+import { Button } from '@/components/ui';
+import { Timestamp, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 // Define subject data structure that extends QuestionBank 
 interface SubjectWithQuestionCount extends QuestionBank {

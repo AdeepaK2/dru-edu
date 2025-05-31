@@ -2,7 +2,7 @@ import { firestore } from '@/utils/firebase-client';
 import { collection, doc, getDocs, getDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
 
 export interface CenterDocument {
-  _id: string;
+  id: string;
   center: number;
   location: string;
   // Add other center fields as needed
@@ -19,9 +19,8 @@ export class CenterFirestoreService {
       const centersRef = collection(firestore, this.COLLECTION_NAME);
       const q = query(centersRef, orderBy('center', 'asc'));
       const snapshot = await getDocs(q);
-      
-      return snapshot.docs.map(doc => ({
-        _id: doc.id,
+        return snapshot.docs.map(doc => ({
+        id: doc.id,
         ...doc.data()
       } as CenterDocument));
     } catch (error) {
@@ -38,9 +37,8 @@ export class CenterFirestoreService {
       const centerRef = doc(firestore, this.COLLECTION_NAME, centerId);
       const centerSnap = await getDoc(centerRef);
       
-      if (centerSnap.exists()) {
-        return {
-          _id: centerSnap.id,
+      if (centerSnap.exists()) {        return {
+          id: centerSnap.id,
           ...centerSnap.data()
         } as CenterDocument;
       }
@@ -64,9 +62,8 @@ export class CenterFirestoreService {
     
     const unsubscribe = onSnapshot(
       q,
-      (snapshot) => {
-        const centers = snapshot.docs.map(doc => ({
-          _id: doc.id,
+      (snapshot) => {        const centers = snapshot.docs.map(doc => ({
+          id: doc.id,
           ...doc.data()
         } as CenterDocument));
         onUpdate(centers);

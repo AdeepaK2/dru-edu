@@ -4,8 +4,10 @@ import React, { useState, useMemo } from 'react';
 import { BookOpen, Search, Edit2, Trash2, Plus, XCircle, Users, Clock } from 'lucide-react';
 import { ClassDocument, ClassDisplayData, classDocumentToDisplay } from '@/models/classSchema';
 import { CenterDocument } from '@/apiservices/centerFirestoreService';
+import { SubjectDocument } from '@/models/subjectSchema';
 import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
 import { CenterFirestoreService } from '@/apiservices/centerFirestoreService';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { Button, ConfirmDialog, Input, Select } from '@/components/ui';
 import { useCachedData } from '@/hooks/useAdminCache';
 import ClassModal from '@/components/modals/ClassModal';
@@ -21,7 +23,6 @@ export default function ClassManager() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [classToDelete, setClassToDelete] = useState<ClassDisplayData | null>(null);
-
   // Cache centers data
   const { data: centers = [] } = useCachedData<CenterDocument[]>(
     'centers',
@@ -30,6 +31,26 @@ export default function ClassManager() {
         const unsubscribe = CenterFirestoreService.subscribeToCenters(
           (centerDocuments: CenterDocument[]) => {
             resolve(centerDocuments);
+            unsubscribe();
+          },
+          (error: Error) => {
+            reject(error);
+            unsubscribe();
+          }
+        );
+      });
+    },
+    { ttl: 300 } // Cache for 5 minutes
+  );
+
+  // Cache subjects data
+  const { data: subjects = [] } = useCachedData<SubjectDocument[]>(
+    'subjects',
+    async () => {
+      return new Promise<SubjectDocument[]>((resolve, reject) => {
+        const unsubscribe = SubjectFirestoreService.subscribeToSubjects(
+          (subjectDocuments: SubjectDocument[]) => {
+            resolve(subjectDocuments);
             unsubscribe();
           },
           (error: Error) => {
@@ -353,10 +374,10 @@ export default function ClassManager() {
             setEditMode(false);
           }}          onSubmit={editMode ? handleUpdateClass : handleCreateClass}
           loading={actionLoading === 'create' || actionLoading === 'update'}
-          title={editMode ? 'Edit Class' : 'Add New Class'}
-          submitButtonText={editMode ? 'Update Class' : 'Add Class'}
+          title={editMode ? 'Edit Class' : 'Add New Class'}          submitButtonText={editMode ? 'Update Class' : 'Add Class'}
           initialData={editMode ? selectedClass || undefined : undefined}
           centers={centers || []}
+          subjects={subjects || []}
         />
       )}
 

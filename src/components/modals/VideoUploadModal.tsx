@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { VideoFirestoreService } from '@/apiservices/videoFirestoreService';
 import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
 import { StudentFirestoreService } from '@/apiservices/studentFirestoreService';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { ClassDocument } from '@/models/classSchema';
+import { SubjectDocument } from '@/models/subjectSchema';
 import { X, Upload, ArrowRight, Search, ImagePlus, Plus } from 'lucide-react';
 
 interface VideoUploadModalProps {
@@ -14,7 +16,7 @@ interface VideoUploadModalProps {
 }
 
 interface StudentListItem {
-  _id: string;
+  id: string;
   name: string;
   email: string;
   status: 'Active' | 'Suspended' | 'Inactive';
@@ -39,8 +41,18 @@ export default function VideoUploadModal({
   const [thumbnailPreview, setThumbnailPreview] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const [classes, setClasses] = useState<ClassDocument[]>([]);
+  
+  // Subject-first state
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('');
+  const [selectedSubjectName, setSelectedSubjectName] = useState<string>('');
+  
+  // Class state (now filtered by subject)
+  const [allClasses, setAllClasses] = useState<ClassDocument[]>([]);
+  const [availableClasses, setAvailableClasses] = useState<ClassDocument[]>([]);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  
+  // Student state
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentSearch, setStudentSearch] = useState('');
@@ -48,32 +60,65 @@ export default function VideoUploadModal({
 
   const videoInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
-  const modalRef = useRef<HTMLDivElement>(null);
-  // Fetch all classes and students
+  const modalRef = useRef<HTMLDivElement>(null);  // Fetch subjects, classes, and students
   useEffect(() => {
     if (isOpen) {
       const fetchData = async () => {
         try {
-          const allClasses = await ClassFirestoreService.getAllClasses();
-          setClasses(allClasses);
+          // Fetch subjects first
+          const allSubjects = await SubjectFirestoreService.getAllSubjects();
+          setSubjects(allSubjects);
           
-          // Pre-select class if provided
+          // Fetch all classes
+          const allClassData = await ClassFirestoreService.getAllClasses();
+          setAllClasses(allClassData);
+          
+          // Pre-select class if provided and auto-select its subject
           if (preSelectedClassId && !selectedClassIds.includes(preSelectedClassId)) {
             setSelectedClassIds([preSelectedClassId]);
+            
+            // Find the class and auto-select its subject
+            const preSelectedClass = allClassData.find(cls => cls.id === preSelectedClassId);
+            if (preSelectedClass) {
+              setSelectedSubjectId(preSelectedClass.subjectId);
+              setSelectedSubjectName(preSelectedClass.subject);
+              
+              // Filter classes for this subject
+              const subjectClasses = allClassData.filter(cls => cls.subjectId === preSelectedClass.subjectId);
+              setAvailableClasses(subjectClasses);
+            }
             console.log('Pre-selected class:', preSelectedClassId);
           }
           
+          // Fetch all students
           const allStudents = await StudentFirestoreService.getAllStudents();
           setStudents(allStudents);
         } catch (error) {
           console.error('Error fetching data:', error);
-          setError('Failed to load classes and students.');
+          setError('Failed to load subjects, classes, and students.');
         }
       };
       
       fetchData();
+    }  }, [isOpen, preSelectedClassId]);
+
+  // Filter classes when subject is selected
+  useEffect(() => {
+    if (selectedSubjectId) {
+      const subjectClasses = allClasses.filter(cls => cls.subjectId === selectedSubjectId);
+      setAvailableClasses(subjectClasses);
+      
+      // Clear selected classes that don't belong to the new subject
+      setSelectedClassIds(prev => 
+        prev.filter(classId => 
+          subjectClasses.some(cls => cls.id === classId)
+        )
+      );
+    } else {
+      setAvailableClasses([]);
+      setSelectedClassIds([]);
     }
-  }, [isOpen, preSelectedClassId]);
+  }, [selectedSubjectId, allClasses]);
 
   // Handle click outside to close modal
   useEffect(() => {
@@ -191,8 +236,7 @@ export default function VideoUploadModal({
         student.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
         student.email.toLowerCase().includes(studentSearch.toLowerCase())
       )
-    : students;
-  // Reset form fields
+    : students;  // Reset form fields
   const resetForm = () => {
     setStep(1);
     setVideoFile(null);
@@ -205,11 +249,25 @@ export default function VideoUploadModal({
     setTagInput('');
     setUploadProgress(0);
     setThumbnailPreview('');
+    setSelectedSubjectId('');
+    setSelectedSubjectName('');
     setSelectedClassIds([]);
     setSelectedStudentIds([]);
     setStudentSearch('');
     setShowTabContent('classes');
     setError('');
+  };
+
+  // Handle subject selection
+  const handleSubjectSelection = (subjectId: string) => {
+    const selectedSubject = subjects.find(subject => subject.id === subjectId);
+    if (selectedSubject) {
+      setSelectedSubjectId(subjectId);
+      setSelectedSubjectName(selectedSubject.name);
+    } else {
+      setSelectedSubjectId('');
+      setSelectedSubjectName('');
+    }
   };
 
   // Handle form submission
@@ -225,10 +283,14 @@ export default function VideoUploadModal({
         setError('Please select a video file.');
         setUploading(false);
         return;
+      }      if (!title || !description) {
+        setError('Please fill out all required fields.');
+        setUploading(false);
+        return;
       }
       
-      if (!title || !description) {
-        setError('Please fill out all required fields.');
+      if (!selectedSubjectId) {
+        setError('Please select a subject for the video.');
         setUploading(false);
         return;
       }
@@ -239,16 +301,19 @@ export default function VideoUploadModal({
         (progress) => {
           setUploadProgress(progress);
         }
-      );
-        // Upload thumbnail if provided
+      );      // Upload thumbnail if provided
       let thumbnailUrl = '';
       if (thumbnailFile) {
         thumbnailUrl = await VideoFirestoreService.uploadThumbnail(thumbnailFile);
-      }      // Create video document in Firestore - prepare data object without undefined values
+      }
+
+      // Create video document in Firestore - prepare data object without undefined values
       const videoData: any = {
         title,
         description,
         videoUrl,
+        subjectId: selectedSubjectId,
+        subjectName: selectedSubjectName,
         tags: tags.length > 0 ? tags : [],
         visibility,
         price: price, // Always include price (0 for free)
@@ -539,12 +604,39 @@ export default function VideoUploadModal({
                       Press Enter to add multiple tags
                     </p>
                   </div>
-                  
-                  {/* Assignment Tabs */}
+                    {/* Subject Selection */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Assign Video To
+                    <label htmlFor="subject" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Subject <span className="text-red-500">*</span>
                     </label>
+                    <select
+                      id="subject"
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
+                      value={selectedSubjectId}
+                      onChange={(e) => handleSubjectSelection(e.target.value)}
+                      required
+                    >
+                      <option value="">Select a subject...</option>
+                      {subjects.map(subject => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Choose the subject for this video first. Classes will be filtered based on your selection.
+                    </p>
+                  </div>
+
+                  {/* Assignment Tabs - Only show if subject is selected */}
+                  {selectedSubjectId && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Assign Video To (Optional)
+                      </label>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                        You can assign this video to specific classes or students now, or do it later from the video management page.
+                      </p>
                     
                     <div className="border-b border-gray-200 dark:border-gray-700">
                       <div className="flex -mb-px">
@@ -572,21 +664,19 @@ export default function VideoUploadModal({
                         </button>
                       </div>
                     </div>
-                    
-                    {/* Class Assignment */}
+                      {/* Class Assignment */}
                     {showTabContent === 'classes' && (
                       <div className="mt-3">
-                        {classes.length > 0 ? (
+                        {availableClasses.length > 0 ? (
                           <div className="max-h-60 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md">
-                            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                              {classes.map(cls => (
-                                <li key={cls._id}>
+                            <ul className="divide-y divide-gray-200 dark:divide-gray-700">                              {availableClasses.map((cls: ClassDocument) => (
+                                <li key={cls.id}>
                                   <label className="flex items-center px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                      checked={selectedClassIds.includes(cls._id)}
-                                      onChange={() => toggleClassSelection(cls._id)}
+                                      checked={selectedClassIds.includes(cls.id)}
+                                      onChange={() => toggleClassSelection(cls.id)}
                                     />
                                     <div>
                                       <div className="font-medium text-gray-900 dark:text-white">
@@ -602,7 +692,9 @@ export default function VideoUploadModal({
                             </ul>
                           </div>
                         ) : (
-                          <p className="text-gray-500 dark:text-gray-400">No classes available</p>
+                          <p className="text-gray-500 dark:text-gray-400">
+                            No classes available for {selectedSubjectName}
+                          </p>
                         )}
                       </div>
                     )}
@@ -625,15 +717,14 @@ export default function VideoUploadModal({
                         
                         {students.length > 0 ? (
                           <div className="max-h-60 overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md">
-                            <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                              {filteredStudents.map(student => (
-                                <li key={student._id}>
+                            <ul className="divide-y divide-gray-200 dark:divide-gray-700">                              {filteredStudents.map(student => (
+                                <li key={student.id}>
                                   <label className="flex items-center px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                      checked={selectedStudentIds.includes(student._id)}
-                                      onChange={() => toggleStudentSelection(student._id)}
+                                      checked={selectedStudentIds.includes(student.id)}
+                                      onChange={() => toggleStudentSelection(student.id)}
                                     />
                                     <div>
                                       <div className="font-medium text-gray-900 dark:text-white">
@@ -657,8 +748,7 @@ export default function VideoUploadModal({
                           <p className="text-gray-500 dark:text-gray-400">No students available</p>
                         )}
                       </div>
-                    )}
-                    
+                    )}                    
                     <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                       {selectedClassIds.length > 0 && (
                         <p>{selectedClassIds.length} class(es) selected</p>
@@ -667,10 +757,11 @@ export default function VideoUploadModal({
                         <p>{selectedStudentIds.length} student(s) selected</p>
                       )}
                       {selectedClassIds.length === 0 && selectedStudentIds.length === 0 && (
-                        <p>No classes or students selected</p>
+                        <p>No classes or students selected (video will be available but not assigned)</p>
                       )}
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
             )}
@@ -722,12 +813,11 @@ export default function VideoUploadModal({
                   className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
                 >
                   Back
-                </button>
-                <button 
+                </button>                <button 
                   type="submit"
-                  disabled={uploading || !title || !description}
+                  disabled={uploading || !title || !description || !selectedSubjectId}
                   className={`px-4 py-2 rounded-md ${
-                    uploading || !title || !description
+                    uploading || !title || !description || !selectedSubjectId
                       ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
                       : 'bg-blue-600 text-white hover:bg-blue-700'
                   }`}

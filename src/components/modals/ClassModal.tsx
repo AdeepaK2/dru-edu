@@ -5,6 +5,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { Modal, Button, Input } from '../ui';
 import { ClassData, ClassDisplayData, timeSlotSchema } from '@/models/classSchema';
 import { CenterDocument } from '@/apiservices/centerFirestoreService';
+import { SubjectDocument } from '@/models/subjectSchema';
 
 interface TimeSlot {
   day: string;
@@ -21,6 +22,7 @@ interface ClassModalProps {
   loading?: boolean;
   initialData?: ClassDisplayData;
   centers?: CenterDocument[];
+  subjects?: SubjectDocument[];
 }
 
 export default function ClassModal({
@@ -31,13 +33,14 @@ export default function ClassModal({
   submitButtonText = 'Save Class',
   loading = false,
   initialData,
-  centers = []
-}: ClassModalProps) {
-  const [formData, setFormData] = useState<Omit<ClassData, 'schedule'> & { schedule: TimeSlot[] }>({
+  centers = [],
+  subjects = []
+}: ClassModalProps) {  const [formData, setFormData] = useState<Omit<ClassData, 'schedule'> & { schedule: TimeSlot[] }>({
     name: '',
     centerId: '1' as const,
     year: '',
     subject: '',
+    subjectId: '',
     schedule: [{ day: '', startTime: '', endTime: '' }],
     monthlyFee: 0,
     description: ''
@@ -67,23 +70,22 @@ export default function ClassModal({
               }
             }
           });
-        }
-
-        setFormData({
+        }        setFormData({
           name: initialData.name || '',
           centerId: (initialData.centerId as '1' | '2') || '1',
           year: initialData.year || '',
           subject: initialData.subject || '',
+          subjectId: '', // Will need to be populated from existing data if available
           schedule: scheduleSlots.length > 0 ? scheduleSlots : [{ day: '', startTime: '', endTime: '' }],
           monthlyFee: initialData.monthlyFee || 0,
           description: initialData.description || ''
-        });
-      } else {
+        });      } else {
         setFormData({
           name: '',
           centerId: '1',
           year: '',
           subject: '',
+          subjectId: '',
           schedule: [{ day: '', startTime: '', endTime: '' }],
           monthlyFee: 0,
           description: ''
@@ -92,7 +94,6 @@ export default function ClassModal({
       setErrors({});
     }
   }, [isOpen, initialData]);
-
   const handleInputChange = (field: keyof Omit<ClassData, 'schedule'>, value: string | number) => {
     setFormData(prev => ({
       ...prev,
@@ -101,6 +102,23 @@ export default function ClassModal({
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
+    }
+  };
+
+  const handleSubjectChange = (subjectId: string) => {
+    const selectedSubject = subjects.find(s => s.id === subjectId);
+    setFormData(prev => ({
+      ...prev,
+      subjectId: subjectId,
+      subject: selectedSubject?.name || ''
+    }));
+    // Clear subject errors
+    if (errors.subject || errors.subjectId) {
+      setErrors(prev => ({ 
+        ...prev, 
+        subject: '', 
+        subjectId: '' 
+      }));
     }
   };
 
@@ -141,10 +159,12 @@ export default function ClassModal({
       newErrors.name = 'Class name is required';
     } else if (formData.name.length < 2) {
       newErrors.name = 'Class name must be at least 2 characters';
+    }    if (!formData.subject.trim()) {
+      newErrors.subject = 'Subject is required';
     }
 
-    if (!formData.subject.trim()) {
-      newErrors.subject = 'Subject is required';
+    if (!formData.subjectId.trim()) {
+      newErrors.subjectId = 'Please select a subject';
     }
 
     if (!formData.year.trim()) {
@@ -192,13 +212,13 @@ export default function ClassModal({
       return;
     }
 
-    try {
-      // Convert form data to ClassData format
+    try {      // Convert form data to ClassData format
       const classData: ClassData = {
         name: formData.name.trim(),
         centerId: formData.centerId,
         year: formData.year.trim(),
         subject: formData.subject.trim(),
+        subjectId: formData.subjectId.trim(),
         schedule: formData.schedule.map(slot => ({
           day: slot.day.trim(),
           startTime: slot.startTime.trim(),
@@ -213,13 +233,13 @@ export default function ClassModal({
       console.error('Error submitting form:', error);
     }
   };
-
   const handleCancel = () => {
     setFormData({
       name: '',
       centerId: '1',
       year: '',
       subject: '',
+      subjectId: '',
       schedule: [{ day: '', startTime: '', endTime: '' }],
       monthlyFee: 0,
       description: ''
@@ -279,15 +299,29 @@ export default function ClassModal({
               </div>
             </div>            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Input
-                  label="Subject"
-                  type="text"
-                  value={formData.subject}
-                  onChange={(e) => handleInputChange('subject', e.target.value)}
-                  placeholder="Enter subject (e.g., Mathematics, English, Science)"
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Subject *
+                </label>
+                <select
+                  value={formData.subjectId}
+                  onChange={(e) => handleSubjectChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   required
-                  error={errors.subject}
-                />
+                >
+                  <option value="">Select a subject</option>
+                  {subjects
+                    .filter(subject => subject.isActive)
+                    .map(subject => (
+                      <option key={subject.id} value={subject.id}>
+                        {subject.name} - Grade {subject.grade}
+                      </option>
+                    ))}
+                </select>
+                {(errors.subject || errors.subjectId) && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {errors.subject || errors.subjectId}
+                  </p>
+                )}
               </div>
 
               <div>

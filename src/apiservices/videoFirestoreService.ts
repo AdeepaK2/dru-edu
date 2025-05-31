@@ -179,11 +179,10 @@ export class VideoFirestoreService {
     try {
       const q = query(this.collectionRef, orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
-      
-      const videos = querySnapshot.docs.map(doc => {
+        const videos = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
-          _id: doc.id,
+          id: doc.id,
           ...data
         } as VideoDocument;
       });
@@ -228,10 +227,9 @@ export class VideoFirestoreService {
     try {
       const docRef = doc(firestore, COLLECTION_NAME, videoId);
       const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
+        if (docSnap.exists()) {
         return {
-          _id: docSnap.id,
+          id: docSnap.id,
           ...docSnap.data()
         } as VideoDocument;
       } else {
@@ -356,9 +354,8 @@ export class VideoFirestoreService {
       
       const unsubscribe = onSnapshot(
         q,
-        (snapshot: QuerySnapshot<DocumentData>) => {
-          const videos = snapshot.docs.map(doc => ({
-            _id: doc.id,
+        (snapshot: QuerySnapshot<DocumentData>) => {          const videos = snapshot.docs.map(doc => ({
+            id: doc.id,
             ...doc.data()
           } as VideoDocument));
           

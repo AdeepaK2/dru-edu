@@ -81,7 +81,6 @@ export class ClassFirestoreService {
       throw new Error(`Failed to create class: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-
   /**
    * Get all classes
    */
@@ -91,7 +90,7 @@ export class ClassFirestoreService {
       const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
-        _id: doc.id,
+        id: doc.id,
         ...doc.data()
       } as ClassDocument));
     } catch (error) {
@@ -99,7 +98,6 @@ export class ClassFirestoreService {
       throw new Error(`Failed to fetch classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-
   /**
    * Get a specific class by ID
    */
@@ -110,7 +108,7 @@ export class ClassFirestoreService {
       
       if (docSnap.exists()) {
         return {
-          _id: docSnap.id,
+          id: docSnap.id,
           ...docSnap.data()
         } as ClassDocument;
       } else {
@@ -169,9 +167,8 @@ export class ClassFirestoreService {
       
       const unsubscribe = onSnapshot(
         q,
-        (snapshot: QuerySnapshot<DocumentData>) => {
-          const classes = snapshot.docs.map(doc => ({
-            _id: doc.id,
+        (snapshot: QuerySnapshot<DocumentData>) => {          const classes = snapshot.docs.map(doc => ({
+            id: doc.id,
             ...doc.data()
           } as ClassDocument));
           
@@ -199,11 +196,10 @@ export class ClassFirestoreService {
         this.collectionRef, 
         where('centerId', '==', centerId),
         orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
+      );      const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
-        _id: doc.id,
+        id: doc.id,
         ...doc.data()
       } as ClassDocument));
     } catch (error) {
@@ -221,11 +217,10 @@ export class ClassFirestoreService {
         this.collectionRef, 
         where('subject', '==', subject),
         orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
+      );      const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
-        _id: doc.id,
+        id: doc.id,
         ...doc.data()
       } as ClassDocument));
     } catch (error) {
@@ -243,11 +238,10 @@ export class ClassFirestoreService {
         this.collectionRef, 
         where('year', '==', year),
         orderBy('createdAt', 'desc')
-      );
-      const querySnapshot = await getDocs(q);
+      );      const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
-        _id: doc.id,
+        id: doc.id,
         ...doc.data()
       } as ClassDocument));
     } catch (error) {

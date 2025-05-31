@@ -13,7 +13,8 @@ export const classSchema = z.object({
   name: z.string().min(2, 'Class name must be at least 2 characters'),
   centerId: z.enum(['1', '2'], { required_error: 'Please select a center' }),
   year: z.string().min(1, 'Year is required'),
-  subject: z.string().min(1, 'Subject is required'),
+  subject: z.string().min(1, 'Subject is required'), // Keep for backward compatibility
+  subjectId: z.string().min(1, 'Subject ID is required'), // Reference to the subject document ID
   schedule: z.array(timeSlotSchema).min(1, 'At least one time slot is required'),
   monthlyFee: z.number().min(0, 'Monthly fee must be positive'),
   teacherId: z.string().optional(), // Will be assigned later
@@ -22,7 +23,7 @@ export const classSchema = z.object({
 
 // Class update schema (all fields optional except required ones for updates)
 export const classUpdateSchema = classSchema.partial().extend({
-  _id: z.string().optional(), // For Firestore document ID
+  id: z.string().optional(), // For Firestore document ID
 });
 
 // Type for class data
@@ -31,7 +32,7 @@ export type ClassUpdateData = z.infer<typeof classUpdateSchema>;
 
 // Class document in Firestore
 export interface ClassDocument extends ClassData {
-  _id: string; // Firestore document ID (auto-generated)
+  id: string; // Firestore document ID (auto-generated)
   classId: string; // Auto-generated unique class ID (e.g., "CLS-2025-001")
   status: 'Active' | 'Inactive' | 'Suspended';
   enrolledStudents: number;
@@ -67,7 +68,7 @@ export function classDocumentToDisplay(doc: ClassDocument, centerName?: string):
   ).join(', ');
 
   return {
-    id: doc._id,
+    id: doc.id,
     classId: doc.classId,
     name: doc.name,
     subject: doc.subject,
@@ -91,8 +92,10 @@ export function formDataToClass(formData: any): ClassData {
     centerId: formData.centerId as '1' | '2',
     year: formData.year,
     subject: formData.subject,
+    subjectId: formData.subjectId,
     schedule: formData.schedule || [],
     monthlyFee: parseFloat(formData.monthlyFee),
+    teacherId: formData.teacherId,
     description: formData.description || undefined,
   };
 }

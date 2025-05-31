@@ -7,6 +7,8 @@ export const videoSchema = z.object({
   description: z.string().min(5, 'Description must be at least 5 characters'),
   thumbnailUrl: z.string().url('Invalid thumbnail URL').optional(),
   videoUrl: z.string().url('Invalid video URL'),
+  subjectId: z.string().min(1, 'Subject is required'), // Reference to subject document ID
+  subjectName: z.string().optional(), // For backward compatibility and display
   assignedClassIds: z.array(z.string()).optional(), // Classes this video is assigned to
   assignedStudentIds: z.array(z.string()).optional(), // Individual students this video is assigned to
   tags: z.array(z.string()).optional(), // Tags for filtering/categorization
@@ -24,7 +26,7 @@ export type VideoUpdateData = z.infer<typeof videoUpdateSchema>;
 
 // Video document in Firestore
 export interface VideoDocument extends VideoData {
-  _id: string; // Firestore document ID
+  id: string; // Firestore document ID
   videoId: string; // Custom video ID (e.g., "VID-2025-001")
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -42,6 +44,8 @@ export interface VideoDisplayData {
   description: string;
   thumbnailUrl: string;
   videoUrl: string;
+  subjectId: string;
+  subjectName: string;
   assignedClasses: string[];
   assignedClassNames?: string[];
   assignedStudents?: string[];
@@ -63,12 +67,14 @@ export function videoDocumentToDisplay(
   teacherName?: string
 ): VideoDisplayData {
   return {
-    id: doc._id,
+    id: doc.id,
     videoId: doc.videoId,
     title: doc.title,
     description: doc.description,
     thumbnailUrl: doc.thumbnailUrl || '/placeholder-thumbnail.jpg',
     videoUrl: doc.videoUrl,
+    subjectId: doc.subjectId,
+    subjectName: doc.subjectName || 'Unknown Subject',
     assignedClasses: doc.assignedClassIds || [],
     assignedClassNames: doc.assignedClassIds?.map(id => classNames?.[id] || id) || [],
     assignedStudents: doc.assignedStudentIds || [],

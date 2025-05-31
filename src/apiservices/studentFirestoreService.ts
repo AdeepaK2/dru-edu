@@ -18,7 +18,7 @@ import { studentSchema, studentUpdateSchema } from '@/models/studentSchema';
 const COLLECTION_NAME = 'students';
 
 export interface StudentListItem {
-  _id: string;
+  id: string;
   name: string;
   email: string;
   status: 'Active' | 'Suspended' | 'Inactive';
@@ -29,14 +29,13 @@ export class StudentFirestoreService {
 
   /**
    * Get all students
-   */
-  static async getAllStudents(): Promise<StudentListItem[]> {
+   */  static async getAllStudents(): Promise<StudentListItem[]> {
     try {
       const q = query(this.collectionRef, orderBy('name', 'asc'));
       const querySnapshot = await getDocs(q);
       
       return querySnapshot.docs.map(doc => ({
-        _id: doc.id,
+        id: doc.id,
         name: doc.data().name,
         email: doc.data().email,
         status: doc.data().status,
@@ -58,9 +57,8 @@ export class StudentFirestoreService {
         orderBy('name', 'asc')
       );
       const querySnapshot = await getDocs(q);
-      
-      return querySnapshot.docs.map(doc => ({
-        _id: doc.id,
+        return querySnapshot.docs.map(doc => ({
+        id: doc.id,
         name: doc.data().name,
         email: doc.data().email,
         status: doc.data().status,

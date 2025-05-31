@@ -3,50 +3,83 @@
 import React, { useState, useEffect } from 'react';
 import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
 import { VideoFirestoreService } from '@/apiservices/videoFirestoreService';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { ClassDocument } from '@/models/classSchema';
 import { VideoDocument } from '@/models/videoSchema';
+import { SubjectDocument } from '@/models/subjectSchema';
 import VideoUploadModal from '@/components/modals/VideoUploadModal';
 import ClassCard from '@/components/videos/ClassCard';
 import VideoCard from '@/components/videos/VideoCard';
 import Link from 'next/link';
-import { Upload, ListFilter, Search, Grid, List ,Plus} from 'lucide-react';
+import { Upload, ListFilter, Search, Grid, List, Plus, BookOpen } from 'lucide-react';
 
 export default function VideoPortalManager() {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<ClassDocument[]>([]);
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
   const [recentVideos, setRecentVideos] = useState<VideoDocument[]>([]);
   const [videosByClass, setVideosByClass] = useState<Record<string, number>>({});
+  const [videosBySubject, setVideosBySubject] = useState<Record<string, VideoDocument[]>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
 
   // Mock current user ID for development (replace with real auth)
-  const currentUserId = 'admin1';
-  useEffect(() => {
+  const currentUserId = 'admin1';  useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         
-        // Fetch all classes
-        const allClasses = await ClassFirestoreService.getAllClasses();
-        setClasses(allClasses);        // Fetch recent videos
-        const videos = await VideoFirestoreService.getAllVideos();
-        setRecentVideos(videos.slice(0, 8)); // Show up to 8 recent videos
+        // Fetch all data
+        const [allClasses, allVideos, allSubjects] = await Promise.all([
+          ClassFirestoreService.getAllClasses(),
+          VideoFirestoreService.getAllVideos(),
+          SubjectFirestoreService.getAllSubjects()
+        ]);
+        
+        setClasses(allClasses);
+        setSubjects(allSubjects);
+        setRecentVideos(allVideos.slice(0, 8)); // Show up to 8 recent videos
         
         // Count videos per class
         const countMap: Record<string, number> = {};
-        
         for (const cls of allClasses) {
           // For each class, count videos assigned to it
           // This could be optimized with a query in a real app
-          const classVideos = videos.filter(
-            video => video.assignedClassIds?.includes(cls._id)
+          const classVideos = allVideos.filter(
+            video => video.assignedClassIds?.includes(cls.id)
           );
-          countMap[cls._id] = classVideos.length;
+          countMap[cls.id] = classVideos.length;
         }
-        
         setVideosByClass(countMap);
+        
+        // Group videos by subject
+        const groupedVideos: Record<string, VideoDocument[]> = {};
+        
+        // Initialize with empty arrays for all subjects
+        allSubjects.forEach(subject => {
+          groupedVideos[subject.id] = [];
+        });
+        
+        // Group videos by their subject
+        allVideos.forEach(video => {
+          if (video.subjectId && groupedVideos[video.subjectId]) {
+            groupedVideos[video.subjectId].push(video);
+          } else if (video.assignedClassIds && video.assignedClassIds.length > 0) {
+            // Fallback: get subject from the first assigned class
+            const firstClassId = video.assignedClassIds[0];
+            const assignedClass = allClasses.find(cls => cls.id === firstClassId);
+            if (assignedClass && assignedClass.subjectId) {
+              if (!groupedVideos[assignedClass.subjectId]) {
+                groupedVideos[assignedClass.subjectId] = [];
+              }
+              groupedVideos[assignedClass.subjectId].push(video);
+            }
+          }
+        });
+        
+        setVideosBySubject(groupedVideos);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -56,7 +89,6 @@ export default function VideoPortalManager() {
     
     fetchData();
   }, []);
-
   // Helper function to get subject for a video
   const getVideoSubject = (video: VideoDocument): string => {
     if (!video.assignedClassIds || video.assignedClassIds.length === 0) {
@@ -65,27 +97,55 @@ export default function VideoPortalManager() {
     
     // Get the subject from the first assigned class
     const firstClassId = video.assignedClassIds[0];
-    const assignedClass = classes.find(cls => cls._id === firstClassId);
+    const assignedClass = classes.find(cls => cls.id === firstClassId);
     return assignedClass?.subject || 'No Subject';
   };
-  
-  // Handle video upload completion
+    // Handle video upload completion
   const handleUploadComplete = async (videoId: string) => {
     try {
-      // Refresh the videos list to include the new one
-      const videos = await VideoFirestoreService.getAllVideos();
-      setRecentVideos(videos.slice(0, 8));
+      // Refresh all data to include the new video
+      const [allClasses, allVideos, allSubjects] = await Promise.all([
+        ClassFirestoreService.getAllClasses(),
+        VideoFirestoreService.getAllVideos(),
+        SubjectFirestoreService.getAllSubjects()
+      ]);
+      
+      setClasses(allClasses);
+      setSubjects(allSubjects);
+      setRecentVideos(allVideos.slice(0, 8));
       
       // Update video counts for classes
-      const countMap = { ...videosByClass };
-      const newVideo = await VideoFirestoreService.getVideoById(videoId);
-      
-      if (newVideo && newVideo.assignedClassIds) {
-        for (const classId of newVideo.assignedClassIds) {
-          countMap[classId] = (countMap[classId] || 0) + 1;
-        }
-        setVideosByClass(countMap);
+      const countMap: Record<string, number> = {};
+      for (const cls of allClasses) {
+        const classVideos = allVideos.filter(
+          video => video.assignedClassIds?.includes(cls.id)
+        );
+        countMap[cls.id] = classVideos.length;
       }
+      setVideosByClass(countMap);
+      
+      // Update videos by subject
+      const groupedVideos: Record<string, VideoDocument[]> = {};
+      allSubjects.forEach(subject => {
+        groupedVideos[subject.id] = [];
+      });
+      
+      allVideos.forEach(video => {
+        if (video.subjectId && groupedVideos[video.subjectId]) {
+          groupedVideos[video.subjectId].push(video);
+        } else if (video.assignedClassIds && video.assignedClassIds.length > 0) {
+          const firstClassId = video.assignedClassIds[0];
+          const assignedClass = allClasses.find(cls => cls.id === firstClassId);
+          if (assignedClass && assignedClass.subjectId) {
+            if (!groupedVideos[assignedClass.subjectId]) {
+              groupedVideos[assignedClass.subjectId] = [];
+            }
+            groupedVideos[assignedClass.subjectId].push(video);
+          }
+        }
+      });
+      
+      setVideosBySubject(groupedVideos);
     } catch (error) {
       console.error('Error refreshing data after upload:', error);
     }
@@ -113,21 +173,31 @@ export default function VideoPortalManager() {
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Upload, manage, and organize educational videos for students
             </p>
-          </div>
-          <div className="mt-4 md:mt-0 flex gap-2">
+          </div>          <div className="mt-4 md:mt-0 flex gap-2">
+            <Link 
+              href="/admin/videos/subjects" 
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+            >
+              <span className="flex items-center">
+                <BookOpen className="h-4 w-4 mr-1" />
+                By Subjects
+              </span>
+            </Link>
             <Link 
               href="/admin/videos/all" 
               className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
             >
-              <span className="flex items-center">              <List className="h-4 w-4 mr-1" />
-              View All Videos
+              <span className="flex items-center">
+                <List className="h-4 w-4 mr-1" />
+                View All Videos
               </span>
             </Link>
             <button 
               onClick={() => setShowUploadModal(true)}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
             >
-              <span className="flex items-center">                <Upload className="h-4 w-4 mr-1" />
+              <span className="flex items-center">
+                <Upload className="h-4 w-4 mr-1" />
                 Upload Video
               </span>
             </button>
@@ -172,12 +242,60 @@ export default function VideoPortalManager() {
                 <option value="">Filter by Grade</option>
                 <option value="10th">10th Grade</option>
                 <option value="11th">11th Grade</option>
-                <option value="12th">12th Grade</option>
-              </select>
+                <option value="12th">12th Grade</option>              </select>
             </div>
           </div>
         </div>
       </div>
+      
+      {/* Subjects Overview */}
+      {!loading && subjects.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Videos by Subject</h2>
+            <Link 
+              href="/admin/videos/subjects" 
+              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+            >
+              View detailed subject organization
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {subjects.slice(0, 8).map(subject => {
+              const subjectVideos = videosBySubject[subject.id] || [];
+              return (
+                <Link key={subject.id} href="/admin/videos/subjects" className="group">
+                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                    <div className="flex items-center space-x-3">
+                      <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg">
+                        <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                          {subject.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          {subject.grade} • {subjectVideos.length} video{subjectVideos.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+          {subjects.length > 8 && (
+            <div className="mt-4 text-center">
+              <Link 
+                href="/admin/videos/subjects" 
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+              >
+                View all {subjects.length} subjects →
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
       
       {/* Loading State */}
       {loading && (
@@ -215,15 +333,14 @@ export default function VideoPortalManager() {
       {!loading && filteredClasses.length > 0 && (
         <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
           <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Classes</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredClasses.map(cls => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">            {filteredClasses.map(cls => (
               <ClassCard
-                key={cls._id}
-                id={cls._id}
+                key={cls.id}
+                id={cls.id}
                 name={cls.name}
                 subject={cls.subject}
                 year={cls.year}
-                videoCount={videosByClass[cls._id] || 0}
+                videoCount={videosByClass[cls.id] || 0}
               />
             ))}
           </div>
@@ -241,11 +358,10 @@ export default function VideoPortalManager() {
             >
               View all videos
             </Link>
-          </div>          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {recentVideos.map(video => (
+          </div>          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">            {recentVideos.map(video => (
               <VideoCard
-                key={video._id}
-                id={video._id}
+                key={video.id}
+                id={video.id}
                 title={video.title}
                 thumbnailUrl={video.thumbnailUrl || '/placeholder-thumbnail.jpg'}
                 subject={getVideoSubject(video)}
