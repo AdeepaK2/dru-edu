@@ -9,6 +9,8 @@ import { SubjectDocument } from '@/models/subjectSchema';
 import { VideoDocument } from '@/models/videoSchema';
 import { ClassDocument } from '@/models/classSchema';
 import VideoUploadModal from '@/components/modals/VideoUploadModal';
+import AssignToClassModal from '@/components/modals/AssignToClassModal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import VideoCard from '@/components/videos/VideoCard';
 import { Button } from '@/components/ui';
 import { Upload, Play, Trash2, Plus, BookOpen, Video, ArrowLeft } from 'lucide-react';
@@ -17,9 +19,13 @@ export default function SubjectVideosPage() {
   const [loading, setLoading] = useState(true);
   const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
   const [videos, setVideos] = useState<VideoDocument[]>([]);
-  const [classes, setClasses] = useState<ClassDocument[]>([]);
-  const [videosBySubject, setVideosBySubject] = useState<Record<string, VideoDocument[]>>({});
+  const [classes, setClasses] = useState<ClassDocument[]>([]);  const [videosBySubject, setVideosBySubject] = useState<Record<string, VideoDocument[]>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<VideoDocument | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<SubjectDocument | null>(null);
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
 
@@ -81,18 +87,42 @@ export default function SubjectVideosPage() {
     // Refresh data after upload
     await fetchData();
     setShowUploadModal(false);
+  };  const handleDeleteVideo = async (videoId: string) => {
+    setVideoToDelete(videoId);
+    setShowDeleteConfirm(true);
   };
 
-  const handleDeleteVideo = async (videoId: string) => {
-    if (window.confirm('Are you sure you want to delete this video?')) {
-      try {
-        await VideoFirestoreService.deleteVideo(videoId);
-        await fetchData(); // Refresh data
-      } catch (error) {
-        console.error('Error deleting video:', error);
-        alert('Failed to delete video');
-      }
+  const confirmDeleteVideo = async () => {
+    if (!videoToDelete) return;
+
+    try {
+      setDeleteLoading(true);
+      await VideoFirestoreService.deleteVideo(videoToDelete);
+      await fetchData(); // Refresh data
+      
+      // Close the confirmation dialog
+      setShowDeleteConfirm(false);
+      setVideoToDelete(null);
+    } catch (error) {
+      console.error('Error deleting video:', error);
+      alert('Failed to delete video');
+    } finally {
+      setDeleteLoading(false);
     }
+  };
+
+  // Handle assign to class
+  const handleAssignToClass = (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (video) {
+      setSelectedVideo(video);
+      setShowAssignModal(true);
+    }
+  };
+
+  // Handle assign modal completion
+  const handleAssignComplete = async () => {
+    await fetchData(); // Refresh data after assignment
   };
 
   const handleDeleteSubject = async (subjectId: string) => {
@@ -243,27 +273,22 @@ export default function SubjectVideosPage() {
                 {/* Videos Grid (shown when expanded) */}
                 {isExpanded && (
                   <div className="p-6">
-                    {subjectVideos.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {subjectVideos.length > 0 ? (                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         {subjectVideos.map(video => (
-                          <div key={video.id} className="relative">
-                            <VideoCard
-                              id={video.id}
-                              title={video.title}
-                              thumbnailUrl={video.thumbnailUrl || '/placeholder-thumbnail.jpg'}
-                              subject={subject.name}
-                              duration={video.duration}
-                              views={video.views}
-                              timestamp={video.createdAt.toDate().toLocaleDateString()}
-                              price={video.price}
-                            />
-                            <button
-                              onClick={() => handleDeleteVideo(video.id)}
-                              className="absolute top-2 right-2 bg-red-600 text-white p-1 rounded-full hover:bg-red-700 opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                          <VideoCard
+                            key={video.id}
+                            id={video.id}
+                            title={video.title}
+                            thumbnailUrl={video.thumbnailUrl || '/placeholder-thumbnail.jpg'}
+                            subject={subject.name}
+                            duration={video.duration}
+                            views={video.views}
+                            timestamp={video.createdAt.toDate().toLocaleDateString()}
+                            price={video.price}
+                            showActions={true}
+                            onDelete={handleDeleteVideo}
+                            onAssignToClass={handleAssignToClass}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -286,14 +311,37 @@ export default function SubjectVideosPage() {
             );
           })}
         </div>
-      )}
-
-      {/* Video Upload Modal */}
+      )}      {/* Video Upload Modal */}
       <VideoUploadModal
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadComplete={handleUploadComplete}
         userId={currentUserId}
+      />      {/* Assign to Class Modal */}
+      <AssignToClassModal
+        isOpen={showAssignModal}
+        onClose={() => {
+          setShowAssignModal(false);
+          setSelectedVideo(null);
+        }}
+        video={selectedVideo}
+        onAssignComplete={handleAssignComplete}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setVideoToDelete(null);
+        }}
+        onConfirm={confirmDeleteVideo}
+        title="Delete Video"
+        description="Are you sure you want to delete this video? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deleteLoading}
       />
     </div>
   );

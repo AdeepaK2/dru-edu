@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Modal, Button } from '@/components/ui';
 import { QuestionBank } from '@/models/questionBankSchema';
+import { SubjectDocument } from '@/models/subjectSchema';
+import { Teacher } from '@/models/teacherSchema';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 
 interface QuestionBankModalProps {
   isOpen: boolean;
@@ -32,8 +35,49 @@ export default function QuestionBankModal({
     questionIds: [] as string[],
     totalQuestions: 0,
     mcqCount: 0,
-    essayCount: 0
+    essayCount: 0,
+    assignedTeacherIds: [] as string[]
   });
+
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [loadingTeachers, setLoadingTeachers] = useState(false);
+
+  // Fetch subjects and teachers when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchSubjects();
+      fetchTeachers();
+    }
+  }, [isOpen]);
+
+  const fetchSubjects = async () => {
+    setLoadingSubjects(true);
+    try {
+      const subjectList = await SubjectFirestoreService.getAllSubjects();
+      setSubjects(subjectList);
+    } catch (error) {
+      console.error('Error fetching subjects:', error);
+    } finally {
+      setLoadingSubjects(false);
+    }
+  };
+
+  const fetchTeachers = async () => {
+    setLoadingTeachers(true);
+    try {
+      const response = await fetch('/api/teacher');
+      if (response.ok) {
+        const teacherList = await response.json();
+        setTeachers(teacherList);
+      }
+    } catch (error) {
+      console.error('Error fetching teachers:', error);
+    } finally {
+      setLoadingTeachers(false);
+    }
+  };
 
   // Reset form when modal opens/closes or initialData changes
   useEffect(() => {
@@ -42,12 +86,12 @@ export default function QuestionBankModal({
         name: initialData.name || '',
         description: initialData.description || '',
         subjectId: initialData.subjectId || '',
-        subjectName: initialData.subjectName || '',
-        grade: initialData.grade || '',
+        subjectName: initialData.subjectName || '',        grade: initialData.grade || '',
         questionIds: initialData.questionIds || [],
         totalQuestions: initialData.totalQuestions || 0,
         mcqCount: initialData.mcqCount || 0,
-        essayCount: initialData.essayCount || 0
+        essayCount: initialData.essayCount || 0,
+        assignedTeacherIds: initialData.assignedTeacherIds || []
       });
     } else if (isOpen) {
       // Reset form for new question bank
@@ -56,20 +100,40 @@ export default function QuestionBankModal({
         description: '',
         subjectId: '',
         subjectName: '',
-        grade: '',
-        questionIds: [],
+        grade: '',        questionIds: [],
         totalQuestions: 0,
         mcqCount: 0,
-        essayCount: 0
+        essayCount: 0,
+        assignedTeacherIds: []
       });
     }
   }, [isOpen, initialData]);
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
+    }));
+  };
+
+  const handleSubjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedSubjectId = e.target.value;
+    const selectedSubject = subjects.find(subject => subject.id === selectedSubjectId);
+    
+    setFormData(prev => ({
+      ...prev,
+      subjectId: selectedSubjectId,
+      subjectName: selectedSubject?.name || '',
+      grade: selectedSubject?.grade || ''
+    }));
+  };
+
+  const handleTeacherAssignment = (teacherId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      assignedTeacherIds: prev.assignedTeacherIds.includes(teacherId)
+        ? prev.assignedTeacherIds.filter(id => id !== teacherId)
+        : [...prev.assignedTeacherIds, teacherId]
     }));
   };
 
@@ -113,53 +177,74 @@ export default function QuestionBankModal({
               placeholder="Describe this question bank"
               rows={3}
             />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+          </div>          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subject ID*
+                Subject*
               </label>
-              <input
-                type="text"
+              <select
                 name="subjectId"
                 value={formData.subjectId}
-                onChange={handleInputChange}
+                onChange={handleSubjectChange}
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., math-g6"
                 required
-              />
+                disabled={loadingSubjects}
+              >
+                <option value="">
+                  {loadingSubjects ? 'Loading subjects...' : 'Select a subject'}
+                </option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name} - {subject.grade}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subject Name*
+                Grade
               </label>
               <input
                 type="text"
-                name="subjectName"
-                value={formData.subjectName}
+                name="grade"
+                value={formData.grade}
                 onChange={handleInputChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., Mathematics"
-                required
-              />
-            </div>
-          </div>
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                placeholder="Auto-filled from subject"
+                readOnly
+              />          </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Grade
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Assign Teachers
             </label>
-            <input
-              type="text"
-              name="grade"
-              value={formData.grade}
-              onChange={handleInputChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="e.g., Grade 6"
-            />
+            {loadingTeachers ? (
+              <div className="text-sm text-gray-500">Loading teachers...</div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
+                {teachers.length === 0 ? (
+                  <div className="text-sm text-gray-500">No teachers available</div>
+                ) : (
+                  teachers.map((teacher) => (
+                    <label key={teacher.id} className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={formData.assignedTeacherIds.includes(teacher.id)}
+                        onChange={() => handleTeacherAssignment(teacher.id)}
+                        className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900">{teacher.name}</div>
+                        <div className="text-xs text-gray-500">{teacher.email} • {teacher.subject}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
           </div>
+        </div>
         </div>
 
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">

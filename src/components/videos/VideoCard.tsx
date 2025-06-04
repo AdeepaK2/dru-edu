@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatDuration } from '@/models/videoSchema';
 import Link from 'next/link';
+import { Trash2, Users, MoreVertical } from 'lucide-react';
 
 interface VideoCardProps {
   id: string;
@@ -12,6 +13,9 @@ interface VideoCardProps {
   timestamp: string;
   price?: number; // Price in dollars
   className?: string;
+  onDelete?: (videoId: string) => void;
+  onAssignToClass?: (videoId: string) => void;
+  showActions?: boolean;
 }
 
 export default function VideoCard({
@@ -24,10 +28,85 @@ export default function VideoCard({
   timestamp,
   price,
   className = '',
+  onDelete,
+  onAssignToClass,
+  showActions = false,
 }: VideoCardProps) {
-  return (
-    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow ${className}`}>
-      <Link href={`/admin/videos/${id}`} className="block">        <div className="relative aspect-video">
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDropdown]);
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onDelete) {
+      onDelete(id);
+    }
+    setShowDropdown(false);
+  };
+
+  const handleAssignToClass = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onAssignToClass) {
+      onAssignToClass(id);
+    }
+    setShowDropdown(false);
+  };  return (
+    <div className={`bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow relative ${className}`}>      {/* Action buttons */}
+      {showActions && (
+        <div className="absolute top-2 right-2 z-10" ref={dropdownRef}>
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setShowDropdown(!showDropdown);
+              }}
+              className="bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-1.5 rounded-full transition-all"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+            
+            {showDropdown && (
+              <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-20">
+                <button
+                  onClick={handleAssignToClass}
+                  className="flex items-center w-full px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Assign to Classes
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="flex items-center w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Video
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      <Link href={`/admin/videos/${id}`} className="block"><div className="relative aspect-video">
           <img
             src={thumbnailUrl || '/placeholder-thumbnail.jpg'}
             alt={title}

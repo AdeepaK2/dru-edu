@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { QuestionBank } from '@/models/questionBankSchema';
 import { questionBankService } from '@/apiservices/questionBankFirestoreService';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { SubjectDocument } from '@/models/subjectSchema';
 import QuestionBankModal from '@/components/modals/QuestionBankModal';
 import { Button } from '@/components/ui';
 import { getAuth } from 'firebase/auth';
@@ -27,6 +29,7 @@ export default function QuestionBanksPage() {
     grade: ''
   });
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
   const [assigningTeachers, setAssigningTeachers] = useState<{
     bankId: string, 
     showing: boolean, 
@@ -34,17 +37,7 @@ export default function QuestionBanksPage() {
   }>({
     bankId: '',
     showing: false,
-    selectedTeachers: []
-  });
-
-  // Fetch subjects from Firebase (simplified for now)
-  const subjects = [
-    { id: 'math', name: 'Mathematics' },
-    { id: 'science', name: 'Science' },
-    { id: 'english', name: 'English' },
-    { id: 'history', name: 'History' },
-    { id: 'geography', name: 'Geography' }
-  ];
+    selectedTeachers: []  });
 
   // Grades list
   const grades = [
@@ -62,21 +55,35 @@ export default function QuestionBanksPage() {
     'Grade 12',
   ];
 
-  // Fetch teachers 
+  // Fetch subjects and teachers
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      try {
+        const subjectList = await SubjectFirestoreService.getAllSubjects();
+        setSubjects(subjectList);
+      } catch (err) {
+        console.error('Error fetching subjects:', err);
+      }
+    };
+
+    fetchSubjects();
+  }, []);
+
+  // Fetch teachers
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
-        // In a real implementation, this would use a teacher service
-        // const response = await teacherService.getAllTeachers();
-        // setTeachers(response);
-        
-        // Sample data for now
-        setTeachers([
-          { id: 'teacher1', name: 'Alice Johnson', email: 'alice@example.com' },
-          { id: 'teacher2', name: 'Bob Smith', email: 'bob@example.com' },
-          { id: 'teacher3', name: 'Carol Williams', email: 'carol@example.com' },
-          { id: 'teacher4', name: 'David Brown', email: 'david@example.com' },
-        ]);
+        const response = await fetch('/api/teacher');
+        if (response.ok) {
+          const teacherData = await response.json();
+          setTeachers(teacherData.map((teacher: any) => ({
+            id: teacher.id,
+            name: teacher.name,
+            email: teacher.email
+          })));
+        } else {
+          console.error('Failed to fetch teachers');
+        }
       } catch (err) {
         console.error('Error fetching teachers:', err);
       }

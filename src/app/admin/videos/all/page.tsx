@@ -7,14 +7,20 @@ import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
 import { ClassDocument } from '@/models/classSchema';
 import VideoCard from '@/components/videos/VideoCard';
 import VideoUploadModal from '@/components/modals/VideoUploadModal';
+import AssignToClassModal from '@/components/modals/AssignToClassModal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Link from 'next/link';
 import { Upload, ArrowLeft, Search, Grid, List, Video } from 'lucide-react';
 
 export default function AllVideos() {
   const [loading, setLoading] = useState(true);
-  const [videos, setVideos] = useState<VideoDocument[]>([]);
-  const [classes, setClasses] = useState<Record<string, ClassDocument>>({});
+  const [videos, setVideos] = useState<VideoDocument[]>([]);  const [classes, setClasses] = useState<Record<string, ClassDocument>>({});
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<VideoDocument | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
@@ -35,9 +41,8 @@ export default function AllVideos() {
         // Fetch all classes to map class IDs to names
         const allClasses = await ClassFirestoreService.getAllClasses();
         const classMap: Record<string, ClassDocument> = {};
-        
-        for (const cls of allClasses) {
-          classMap[cls._id] = cls;
+          for (const cls of allClasses) {
+          classMap[cls.id] = cls;
         }
         
         setClasses(classMap);
@@ -50,8 +55,7 @@ export default function AllVideos() {
     
     fetchData();
   }, []);
-  
-  // Handle video upload completion
+    // Handle video upload completion
   const handleUploadComplete = async (videoId: string) => {
     try {
       // Refresh the videos list to include the new one
@@ -59,6 +63,53 @@ export default function AllVideos() {
       setVideos(allVideos);
     } catch (error) {
       console.error('Error refreshing videos after upload:', error);
+    }
+  };
+  // Handle video deletion
+  const handleDeleteVideo = async (videoId: string) => {
+    setVideoToDelete(videoId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteVideo = async () => {
+    if (!videoToDelete) return;
+
+    try {
+      setDeleteLoading(true);
+      await VideoFirestoreService.deleteVideo(videoToDelete);
+      
+      // Refresh the videos list after deletion
+      const allVideos = await VideoFirestoreService.getAllVideos();
+      setVideos(allVideos);
+      
+      // Close the confirmation dialog
+      setShowDeleteConfirm(false);
+      setVideoToDelete(null);
+    } catch (error) {
+      console.error('Error deleting video:', error);
+      alert('Failed to delete video. Please try again.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Handle assign to class
+  const handleAssignToClass = (videoId: string) => {
+    const video = videos.find(v => v.id === videoId);
+    if (video) {
+      setSelectedVideo(video);
+      setShowAssignModal(true);
+    }
+  };
+
+  // Handle assign modal completion
+  const handleAssignComplete = async () => {
+    try {
+      // Refresh the videos list after assignment
+      const allVideos = await VideoFirestoreService.getAllVideos();
+      setVideos(allVideos);
+    } catch (error) {
+      console.error('Error refreshing data after assignment:', error);
     }
   };
     // Get class subject for a video (uses the first assigned class)
@@ -222,13 +273,12 @@ export default function AllVideos() {
                 ? 'Try adjusting your search or filters' 
                 : 'Get started by uploading your first educational video'}
             </p>
-            {videos.length === 0 && (
-              <button 
+            {videos.length === 0 && (              <button 
                 onClick={() => setShowUploadModal(true)}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
               >
                 <span className="flex items-center">
-                  <span className="material-symbols-outlined mr-1 text-sm">upload</span>
+                  <Upload className="h-4 w-4 mr-1" />
                   Upload Your First Video
                 </span>
               </button>
@@ -239,11 +289,10 @@ export default function AllVideos() {
       
       {/* Videos Grid View */}
       {!loading && filteredVideos.length > 0 && viewMode === 'grid' && (
-        <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredVideos.map(video => (
+        <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">            {filteredVideos.map(video => (
               <VideoCard
-                key={video._id}
-                id={video._id}
+                key={video.id}
+                id={video.id}
                 title={video.title}
                 thumbnailUrl={video.thumbnailUrl || '/placeholder-thumbnail.jpg'}
                 subject={getVideoSubject(video)}
@@ -251,6 +300,9 @@ export default function AllVideos() {
                 views={video.views}
                 timestamp={video.createdAt.toDate().toLocaleDateString()}
                 price={video.price}
+                showActions={true}
+                onDelete={handleDeleteVideo}
+                onAssignToClass={handleAssignToClass}
               />
             ))}
           </div>
@@ -288,7 +340,7 @@ export default function AllVideos() {
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredVideos.map(video => (
-                  <tr key={video._id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                  <tr key={video.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="h-12 w-20 flex-shrink-0 mr-4">
@@ -299,7 +351,7 @@ export default function AllVideos() {
                           />
                         </div>
                         <div>
-                          <Link href={`/admin/videos/${video._id}`} className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                          <Link href={`/admin/videos/${video.id}`} className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
                             {video.title}
                           </Link>
                           <p className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-xs">
@@ -347,14 +399,37 @@ export default function AllVideos() {
             </table>
           </div>
         </div>
-      )}
-
-      {/* Video Upload Modal */}
+      )}      {/* Video Upload Modal */}
       <VideoUploadModal
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadComplete={handleUploadComplete}
         userId={currentUserId}
+      />      {/* Assign to Class Modal */}
+      <AssignToClassModal
+        isOpen={showAssignModal}
+        onClose={() => {
+          setShowAssignModal(false);
+          setSelectedVideo(null);
+        }}
+        video={selectedVideo}
+        onAssignComplete={handleAssignComplete}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setVideoToDelete(null);
+        }}
+        onConfirm={confirmDeleteVideo}
+        title="Delete Video"
+        description="Are you sure you want to delete this video? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deleteLoading}
       />
     </div>
   );

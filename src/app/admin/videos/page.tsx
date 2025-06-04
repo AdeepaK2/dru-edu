@@ -8,6 +8,8 @@ import { ClassDocument } from '@/models/classSchema';
 import { VideoDocument } from '@/models/videoSchema';
 import { SubjectDocument } from '@/models/subjectSchema';
 import VideoUploadModal from '@/components/modals/VideoUploadModal';
+import AssignToClassModal from '@/components/modals/AssignToClassModal';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import ClassCard from '@/components/videos/ClassCard';
 import VideoCard from '@/components/videos/VideoCard';
 import Link from 'next/link';
@@ -17,10 +19,13 @@ export default function VideoPortalManager() {
   const [loading, setLoading] = useState(true);
   const [classes, setClasses] = useState<ClassDocument[]>([]);
   const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
-  const [recentVideos, setRecentVideos] = useState<VideoDocument[]>([]);
-  const [videosByClass, setVideosByClass] = useState<Record<string, number>>({});
-  const [videosBySubject, setVideosBySubject] = useState<Record<string, VideoDocument[]>>({});
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [recentVideos, setRecentVideos] = useState<VideoDocument[]>([]);  const [videosByClass, setVideosByClass] = useState<Record<string, number>>({});
+  const [videosBySubject, setVideosBySubject] = useState<Record<string, VideoDocument[]>>({});  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState<VideoDocument | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('');
   const [yearFilter, setYearFilter] = useState('');
@@ -159,9 +164,135 @@ export default function VideoPortalManager() {
       
     const matchesSubject = subjectFilter === '' || cls.subject === subjectFilter;
     const matchesYear = yearFilter === '' || cls.year === yearFilter;
-    
-    return matchesSearch && matchesSubject && matchesYear;
+      return matchesSearch && matchesSubject && matchesYear;
   });
+  // Handle video deletion
+  const handleDeleteVideo = async (videoId: string) => {
+    setVideoToDelete(videoId);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDeleteVideo = async () => {
+    if (!videoToDelete) return;
+
+    try {
+      setDeleteLoading(true);
+      await VideoFirestoreService.deleteVideo(videoToDelete);
+      
+      // Refresh data after deletion
+      const [allClasses, allVideos, allSubjects] = await Promise.all([
+        ClassFirestoreService.getAllClasses(),
+        VideoFirestoreService.getAllVideos(),
+        SubjectFirestoreService.getAllSubjects()
+      ]);
+      
+      setClasses(allClasses);
+      setSubjects(allSubjects);
+      setRecentVideos(allVideos.slice(0, 8));
+      
+      // Update video counts for classes
+      const countMap: Record<string, number> = {};
+      for (const cls of allClasses) {
+        const classVideos = allVideos.filter(
+          video => video.assignedClassIds?.includes(cls.id)
+        );
+        countMap[cls.id] = classVideos.length;
+      }
+      setVideosByClass(countMap);
+      
+      // Update videos by subject
+      const groupedVideos: Record<string, VideoDocument[]> = {};
+      allSubjects.forEach(subject => {
+        groupedVideos[subject.id] = [];
+      });
+      
+      allVideos.forEach(video => {
+        if (video.subjectId && groupedVideos[video.subjectId]) {
+          groupedVideos[video.subjectId].push(video);
+        } else if (video.assignedClassIds && video.assignedClassIds.length > 0) {
+          const firstClassId = video.assignedClassIds[0];
+          const assignedClass = allClasses.find(cls => cls.id === firstClassId);
+          if (assignedClass && assignedClass.subjectId) {
+            if (!groupedVideos[assignedClass.subjectId]) {
+              groupedVideos[assignedClass.subjectId] = [];
+            }
+            groupedVideos[assignedClass.subjectId].push(video);
+          }
+        }
+      });
+      
+      setVideosBySubject(groupedVideos);
+      
+      // Close the confirmation dialog
+      setShowDeleteConfirm(false);
+      setVideoToDelete(null);
+    } catch (error) {
+      console.error('Error deleting video:', error);
+      alert('Failed to delete video. Please try again.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Handle assign to class
+  const handleAssignToClass = (videoId: string) => {
+    const video = recentVideos.find(v => v.id === videoId);
+    if (video) {
+      setSelectedVideo(video);
+      setShowAssignModal(true);
+    }
+  };
+
+  // Handle assign modal completion
+  const handleAssignComplete = async () => {
+    try {
+      // Refresh data after assignment
+      const [allClasses, allVideos, allSubjects] = await Promise.all([
+        ClassFirestoreService.getAllClasses(),
+        VideoFirestoreService.getAllVideos(),
+        SubjectFirestoreService.getAllSubjects()
+      ]);
+      
+      setClasses(allClasses);
+      setSubjects(allSubjects);
+      setRecentVideos(allVideos.slice(0, 8));
+      
+      // Update video counts for classes
+      const countMap: Record<string, number> = {};
+      for (const cls of allClasses) {
+        const classVideos = allVideos.filter(
+          video => video.assignedClassIds?.includes(cls.id)
+        );
+        countMap[cls.id] = classVideos.length;
+      }
+      setVideosByClass(countMap);
+      
+      // Update videos by subject
+      const groupedVideos: Record<string, VideoDocument[]> = {};
+      allSubjects.forEach(subject => {
+        groupedVideos[subject.id] = [];
+      });
+      
+      allVideos.forEach(video => {
+        if (video.subjectId && groupedVideos[video.subjectId]) {
+          groupedVideos[video.subjectId].push(video);
+        } else if (video.assignedClassIds && video.assignedClassIds.length > 0) {
+          const firstClassId = video.assignedClassIds[0];
+          const assignedClass = allClasses.find(cls => cls.id === firstClassId);
+          if (assignedClass && assignedClass.subjectId) {
+            if (!groupedVideos[assignedClass.subjectId]) {
+              groupedVideos[assignedClass.subjectId] = [];
+            }
+            groupedVideos[assignedClass.subjectId].push(video);
+          }
+        }
+      });
+      
+      setVideosBySubject(groupedVideos);
+    } catch (error) {
+      console.error('Error refreshing data after assignment:', error);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -369,18 +500,44 @@ export default function VideoPortalManager() {
                 views={video.views}
                 timestamp={video.createdAt.toDate().toLocaleDateString()}
                 price={video.price}
+                showActions={true}
+                onDelete={handleDeleteVideo}
+                onAssignToClass={handleAssignToClass}
               />
             ))}
           </div>
         </div>
-      )}
-
-      {/* Video Upload Modal */}
+      )}      {/* Video Upload Modal */}
       <VideoUploadModal
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUploadComplete={handleUploadComplete}
         userId={currentUserId}
+      />      {/* Assign to Class Modal */}
+      <AssignToClassModal
+        isOpen={showAssignModal}
+        onClose={() => {
+          setShowAssignModal(false);
+          setSelectedVideo(null);
+        }}
+        video={selectedVideo}
+        onAssignComplete={handleAssignComplete}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        onClose={() => {
+          setShowDeleteConfirm(false);
+          setVideoToDelete(null);
+        }}
+        onConfirm={confirmDeleteVideo}
+        title="Delete Video"
+        description="Are you sure you want to delete this video? This action cannot be undone and will permanently remove the video and all its data."
+        confirmText="Delete Video"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={deleteLoading}
       />
     </div>
   );

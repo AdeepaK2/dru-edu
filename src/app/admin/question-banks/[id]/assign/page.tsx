@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { QuestionBank, QuestionBankAssignment } from '@/models/questionBankSchema';
 import { Button } from '@/components/ui';
 
@@ -293,12 +294,9 @@ export default function AssignBankPage({ params }: AssignBankPageProps) {
   return (
     <div className="px-6 py-8 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <div className="flex items-center mb-2">
+        <div className="mb-8">          <div className="flex items-center mb-2">
             <Link href={`/admin/question-banks/${bankId}`} className="text-blue-600 hover:text-blue-800 flex items-center">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
+              <ArrowLeft className="h-4 w-4 mr-1" />
               Back to Question Bank
             </Link>
           </div>

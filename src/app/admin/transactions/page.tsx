@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Download, DollarSign, CreditCard, Clock, AlertTriangle, Search, X, Printer } from 'lucide-react';
 
 // Dummy data for transactions
 const transactionsData = [
@@ -183,7 +184,7 @@ export default function TransactionManager() {
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
             >
               <span className="flex items-center">
-                <span className="material-symbols-outlined mr-1 text-sm">download</span>
+                <Download className="h-4 w-4 mr-1" />
                 Export Report
               </span>
             </button>
@@ -196,7 +197,7 @@ export default function TransactionManager() {
         <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
           <div className="flex items-center">
             <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
-              <span className="material-symbols-outlined text-green-600 dark:text-green-300">payments</span>
+              <DollarSign className="h-5 w-5 text-green-600 dark:text-green-300" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Transactions</p>
@@ -207,7 +208,7 @@ export default function TransactionManager() {
         <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
           <div className="flex items-center">
             <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900">
-              <span className="material-symbols-outlined text-blue-600 dark:text-blue-300">account_balance</span>
+              <CreditCard className="h-5 w-5 text-blue-600 dark:text-blue-300" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Amount</p>
@@ -218,7 +219,7 @@ export default function TransactionManager() {
         <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
           <div className="flex items-center">
             <div className="p-3 rounded-full bg-yellow-100 dark:bg-yellow-900">
-              <span className="material-symbols-outlined text-yellow-600 dark:text-yellow-300">pending</span>
+              <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-300" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Pending</p>
@@ -231,7 +232,7 @@ export default function TransactionManager() {
         <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-6">
           <div className="flex items-center">
             <div className="p-3 rounded-full bg-red-100 dark:bg-red-900">
-              <span className="material-symbols-outlined text-red-600 dark:text-red-300">warning</span>
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-300" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Failed</p>
@@ -248,7 +249,7 @@ export default function TransactionManager() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span className="material-symbols-outlined text-gray-400">search</span>
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
             <input
               type="text"
@@ -382,7 +383,7 @@ export default function TransactionManager() {
                   Transaction Details
                 </h3>
                 <button onClick={handleCloseModal} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-                  <span className="material-symbols-outlined">close</span>
+                  <X className="h-4 w-4" />
                 </button>
               </div>
 

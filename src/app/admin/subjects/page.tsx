@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { BookOpen, Search, Edit2, Trash2, Plus, XCircle, GraduationCap, FileText } from 'lucide-react';
+import { BookOpen, Search, Edit2, Trash2, Plus, XCircle, GraduationCap, FileText, Book } from 'lucide-react';
 import { SubjectDocument, SubjectDisplayData, subjectDocumentToDisplay } from '@/models/subjectSchema';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { Button, ConfirmDialog, Input } from '@/components/ui';
 import { useCachedData } from '@/hooks/useAdminCache';
 import SubjectModal from '@/components/modals/SubjectModal';
+import LessonManagementModal from '@/components/modals/LessonManagementModal';
 import { SubjectData } from '@/models/subjectSchema';
 
 const GRADE_OPTIONS = [
@@ -21,10 +22,13 @@ export default function SubjectManager() {
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<SubjectDisplayData | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [subjectToDelete, setSubjectToDelete] = useState<SubjectDisplayData | null>(null);
+  
+  // Lesson management modal state
+  const [lessonModalOpen, setLessonModalOpen] = useState(false);
+  const [selectedSubjectForLessons, setSelectedSubjectForLessons] = useState<SubjectDisplayData | null>(null);
 
   // Cache subjects data
   const { data: subjects = [], loading, error, refetch } = useCachedData<SubjectDisplayData[]>(
@@ -110,11 +114,16 @@ export default function SubjectManager() {
     setEditMode(true);
     setModalOpen(true);
   };
-
   // Handle delete button click
   const handleDeleteClick = (subject: SubjectDisplayData) => {
     setSubjectToDelete(subject);
     setShowDeleteConfirm(true);
+  };
+
+  // Handle manage lessons button click
+  const handleManageLessonsClick = (subject: SubjectDisplayData) => {
+    setSelectedSubjectForLessons(subject);
+    setLessonModalOpen(true);
   };
 
   // Handle subject creation
@@ -283,9 +292,15 @@ export default function SubjectManager() {
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                       ID: {subject.subjectId}
                     </div>
-                  </div>
-                </div>
-                <div className="flex flex-col space-y-2 ml-4">
+                  </div>                </div>                <div className="flex flex-col space-y-2 ml-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleManageLessonsClick(subject)}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    <Book className="w-4 h-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -349,9 +364,7 @@ export default function SubjectManager() {
           submitButtonText={editMode ? 'Update Subject' : 'Add Subject'}
           initialData={editMode ? selectedSubject || undefined : undefined}
         />
-      )}
-
-      {/* Delete Confirmation Modal */}
+      )}      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && subjectToDelete && (
         <ConfirmDialog
           isOpen={showDeleteConfirm}
@@ -366,6 +379,19 @@ export default function SubjectManager() {
           confirmText="Delete"
           cancelText="Cancel"
           variant="danger"
+        />
+      )}
+
+      {/* Lesson Management Modal */}
+      {lessonModalOpen && selectedSubjectForLessons && (
+        <LessonManagementModal
+          isOpen={lessonModalOpen}
+          onClose={() => {
+            setLessonModalOpen(false);
+            setSelectedSubjectForLessons(null);
+          }}
+          subjectId={selectedSubjectForLessons.id}
+          subjectName={selectedSubjectForLessons.name}
         />
       )}
     </div>
