@@ -69,12 +69,11 @@ export default function QuestionManagementModal({
       // if (filterOptions.subject) {
       //   filteredQuestions = filteredQuestions.filter(q => q.subjectName === filterOptions.subject);
       // }
-      
-      if (searchTerm) {
+        if (searchTerm) {
         const search = searchTerm.toLowerCase();
         filteredQuestions = filteredQuestions.filter(q => 
           q.title.toLowerCase().includes(search) ||
-          q.content.toLowerCase().includes(search)
+          q.content?.toLowerCase().includes(search)
         );
       }
       

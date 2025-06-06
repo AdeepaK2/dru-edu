@@ -20,17 +20,98 @@
     }
   ],
   "firestore": {
+    "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "source": ".",
+    "public": "out",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
     ],
-    "frameworksBackend": {
-      "region": "australia-southeast1"
-    }
+    "rewrites": [
+      {
+        "source": "/api/functions/subjects",
+        "function": {
+          "functionId": "getSubjects",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/create-subject",
+        "function": {
+          "functionId": "createSubject",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/classes",
+        "function": {
+          "functionId": "getClasses",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/create-class",
+        "function": {
+          "functionId": "createClass",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/teachers",
+        "function": {
+          "functionId": "getTeachers",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/create-teacher",
+        "function": {
+          "functionId": "createTeacher",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/students",
+        "function": {
+          "functionId": "getStudents",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/create-student",
+        "function": {
+          "functionId": "createStudent",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/question-banks",
+        "function": {
+          "functionId": "getQuestionBanks",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/create-question-bank",
+        "function": {
+          "functionId": "createQuestionBank",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "/api/functions/health",
+        "function": {
+          "functionId": "healthCheck",
+          "region": "australia-southeast1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
   }
 }

@@ -2,7 +2,24 @@
 
 import { useState, useEffect } from 'react';
 import { MelbourneDate } from '@/utils/melbourne-date';
-import { formatMelbourneDate, getMelbourneOffset } from '@/utils/timezone';
+
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
+
+// Helper functions
+const formatMelbourneDate = (date: Date, options?: Intl.DateTimeFormatOptions) => {
+  const defaultOptions = {
+    timeZone: MELBOURNE_TIMEZONE,
+    ...options
+  };
+  return date.toLocaleString('en-AU', defaultOptions);
+};
+
+const getMelbourneOffset = () => {
+  const date = new Date();
+  const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+  const melbourneTime = new Date(utc + (11 * 3600000)); // Rough offset
+  return melbourneTime.getTimezoneOffset();
+};
 
 export function TimezoneDemo() {
   const [currentTime, setCurrentTime] = useState<MelbourneDate | null>(null);

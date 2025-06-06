@@ -3,7 +3,8 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { MELBOURNE_TIMEZONE } from './timezone';
+
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
 
 // Firebase configuration using environment variables
 const firebaseConfig = {

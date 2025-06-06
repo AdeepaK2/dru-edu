@@ -1,30 +1,43 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Menu } from 'lucide-react';
-import { MelbourneDate } from '@/utils/melbourne-date';
-import { MELBOURNE_TIMEZONE } from '@/utils/timezone';
 
 interface NavbarProps {
   adminName: string;
-  currentTime: MelbourneDate;
   toggleSidebar: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ adminName, currentTime, toggleSidebar }) => {
+const Navbar: React.FC<NavbarProps> = ({ adminName, toggleSidebar }) => {
   const router = useRouter();
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Format time with hours, minutes, and seconds in Melbourne timezone
-  const formattedTime = currentTime.toTimeString();
+  // Update time every second using simple Date object
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // Format date in Melbourne timezone
-  const formattedDate = currentTime.format({
+  // Format time for Melbourne timezone using toLocaleString
+  const melbourneTime = currentTime.toLocaleString('en-AU', {
+    timeZone: 'Australia/Melbourne',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  // Format date for Melbourne timezone
+  const melbourneDate = currentTime.toLocaleDateString('en-AU', {
+    timeZone: 'Australia/Melbourne',
     weekday: 'short',
     year: 'numeric',
     month: 'short',
-    day: 'numeric',
+    day: 'numeric'
   });
 
   return (
@@ -43,14 +56,14 @@ const Navbar: React.FC<NavbarProps> = ({ adminName, currentTime, toggleSidebar }
           </Link>
         </div>        <div className="flex items-center space-x-6">          {/* Mobile Time Display */}
           <div className="md:hidden flex flex-col items-end text-xs">
-            <span className="text-gray-700 dark:text-gray-200 font-medium">{formattedTime}</span>
+            <span className="text-gray-700 dark:text-gray-200 font-medium">{melbourneTime}</span>
             <span className="text-blue-500 dark:text-blue-400 text-xs">Melbourne</span>
           </div>
 
           {/* Desktop System Clock */}
           <div className="hidden md:flex flex-col items-end">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{formattedTime}</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">{formattedDate}</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{melbourneTime}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">{melbourneDate}</span>
             <span className="text-xs text-blue-500 dark:text-blue-400 font-medium">Melbourne Time</span>
           </div>
 

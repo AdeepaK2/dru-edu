@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, CheckCircle, Plus, BookOpen, Edit, Trash2 } from 'lucide-react';
@@ -9,15 +9,10 @@ import { QuestionBank, Question } from '@/models/questionBankSchema';
 import { questionBankService, questionService } from '@/apiservices/questionBankFirestoreService';
 import { Button, ConfirmDialog } from '@/components/ui';
 
-interface QuestionBankDetailPageProps {
-  params: {
-    id: string;
-  };
-}
-
-export default function QuestionBankDetailPage({ params }: QuestionBankDetailPageProps) {
+export default function QuestionBankDetailPage() {
   const router = useRouter();
-  const bankId = params.id;
+  const params = useParams();
+  const bankId = params.id as string;
   
   const [questionBank, setQuestionBank] = useState<QuestionBank | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);

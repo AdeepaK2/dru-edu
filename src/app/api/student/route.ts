@@ -153,9 +153,8 @@ export async function POST(req: NextRequest) {
         lastPayment: 'N/A'
       },
       uid: userRecord.uid,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now()
-    };
+      createdAt: admin.firestore.Timestamp.now() as any,
+      updatedAt: admin.firestore.Timestamp.now() as any    };
     
     // Perform operations in parallel for better performance
     await Promise.all([
@@ -169,7 +168,8 @@ export async function POST(req: NextRequest) {
       // Queue welcome email
       createEmailDocument(studentData.email, studentData.name, generatedPassword)
     ]);
-      // Clear cache
+    
+    // Clear cache
     cacheUtils.invalidate('students');
     
     return NextResponse.json(
@@ -340,10 +340,9 @@ export async function PATCH(req: NextRequest) {
     if (Object.keys(authUpdateData).length > 0) {
       updatePromises.push(firebaseAdmin.authentication.updateUser(id, authUpdateData));
     }
-    
-    // Update in Firestore
+      // Update in Firestore
     const firestoreUpdateData: Partial<StudentDocument> = {
-      updatedAt: Timestamp.now()
+      updatedAt: admin.firestore.Timestamp.now() as any
     };
     
     // Only include fields that are provided in the update

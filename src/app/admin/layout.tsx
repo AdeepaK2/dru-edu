@@ -8,7 +8,6 @@ import Navbar from '@/components/adminDashboard/Navbar';
 import Sidebar from '@/components/adminDashboard/Sidebar';
 import AdminLoadingBar from '@/components/adminDashboard/AdminLoadingBar';
 import { prefetchAdminPages } from '@/utils/performance';
-import { MelbourneDate } from '@/utils/melbourne-date';
 import { useNavigationLoading } from '@/hooks/useNavigationLoading';
 
 export default function AdminLayout({
@@ -19,7 +18,6 @@ export default function AdminLayout({
   const [loading, setLoading] = useState(true);
   const [adminName, setAdminName] = useState('Admin User');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [currentTime, setCurrentTime] = useState(MelbourneDate.now());
   const [authChecked, setAuthChecked] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -27,14 +25,7 @@ export default function AdminLayout({
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
-  };  // Update clock every second
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(MelbourneDate.now());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
+  };
 
   // Prefetch admin pages for faster navigation
   useEffect(() => {
@@ -65,7 +56,8 @@ export default function AdminLayout({
             window.location.href = '/admin/login';
             return;
           }
-            setAdminName(user.displayName || user.email || 'Admin');
+          
+          setAdminName(user.displayName || user.email || 'Admin');
           setAuthChecked(true);
           setLoading(false);
           setNavLoading(false); // Complete navigation loading when auth is complete
@@ -103,7 +95,6 @@ export default function AdminLayout({
       {/* Top Navbar */}
       <Navbar 
         adminName={adminName} 
-        currentTime={currentTime} 
         toggleSidebar={toggleSidebar} 
       />      {/* Sidebar */}
       <Sidebar isOpen={sidebarOpen} toggleSidebar={toggleSidebar} />

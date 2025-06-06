@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { TimezoneDemo } from "@/components/TimezoneDemo";
+// import { TimezoneDemo } from "@/components/TimezoneDemo";
 
 export default function Home() {
   return (
@@ -18,7 +18,10 @@ export default function Home() {
             Haven't Developed Yet - Currently setting up timezone configuration for Melbourne, Australia
           </p>
           
-          <TimezoneDemo />
+          {/* <TimezoneDemo /> */}
+          <div className="text-sm text-gray-500">
+            TimezoneDemo component temporarily disabled for debugging
+          </div>
         </div>
         
         <div className="text-center">

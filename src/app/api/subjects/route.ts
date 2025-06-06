@@ -8,9 +8,8 @@ import { cacheUtils } from '@/utils/cache';
 async function generateSubjectId(): Promise<string> {
   const currentYear = new Date().getFullYear();
   const yearPrefix = `SUB-${currentYear}-`;
-  
-  // Get all subjects with the current year prefix
-  const snapshot = await firebaseAdmin.firestore
+    // Get all subjects with the current year prefix
+  const snapshot = await firebaseAdmin.db
     .collection('subjects')
     .where('subjectId', '>=', yearPrefix)
     .where('subjectId', '<', `SUB-${currentYear + 1}-`)
@@ -56,31 +55,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const subjectData = validationResult.data;
-
-    // Generate auto-incrementing subject ID
+    const subjectData = validationResult.data;    // Generate auto-incrementing subject ID
     const subjectId = await generateSubjectId();
     
     // Prepare the document to be saved
-    const now = Timestamp.now();
+    const now = Timestamp.now() as any;
     const subjectDocument: Omit<SubjectDocument, 'id'> = {
       ...subjectData,
       subjectId,
       createdAt: now,
       updatedAt: now,
     };
-
-    console.log('Creating subject document:', subjectDocument);
-
-    // Save to Firestore
-    const docRef = await firebaseAdmin.firestore.collection('subjects').add(subjectDocument);
     
+    console.log('Creating subject document:', subjectDocument);
+    
+    // Save to Firestore
+    const docRef = await firebaseAdmin.db.collection('subjects').add(subjectDocument);
     console.log('Subject created successfully with ID:', docRef.id);
 
     // Clear cache to ensure fresh data
-    cacheUtils.clearByPattern('subjects');
+    cacheUtils.invalidate('subjects');
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true, 
       id: docRef.id,
       subjectId: subjectId,
@@ -109,7 +105,7 @@ export async function GET(req: NextRequest) {
 
     console.log('Fetching subjects with filters:', { grade, isActive });
 
-    let query = firebaseAdmin.firestore.collection('subjects').orderBy('createdAt', 'desc');
+    let query = firebaseAdmin.db.collection('subjects').orderBy('createdAt', 'desc');
 
     // Apply filters
     if (grade) {
@@ -118,11 +114,8 @@ export async function GET(req: NextRequest) {
     
     if (isActive !== null) {
       query = query.where('isActive', '==', isActive === 'true');
-    }
-
-    const snapshot = await query.get();
-    
-    const subjects: SubjectDocument[] = snapshot.docs.map(doc => ({
+    }    const snapshot = await query.get();
+    const subjects: SubjectDocument[] = snapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data()
     } as SubjectDocument));
@@ -180,12 +173,10 @@ export async function PUT(req: NextRequest) {
         }, 
         { status: 400 }
       );
-    }
-
-    const validatedData = validationResult.data;
+    }    const validatedData = validationResult.data;
 
     // Check if subject exists
-    const subjectRef = firebaseAdmin.firestore.collection('subjects').doc(id);
+    const subjectRef = firebaseAdmin.db.collection('subjects').doc(id);
     const subjectDoc = await subjectRef.get();
 
     if (!subjectDoc.exists) {
@@ -193,21 +184,17 @@ export async function PUT(req: NextRequest) {
         { success: false, error: 'Subject not found' },
         { status: 404 }
       );
-    }
-
-    // Update the document
-    const now = Timestamp.now();
+    }    // Update the document
+    const now = Timestamp.now() as any;
     await subjectRef.update({
       ...validatedData,
       updatedAt: now,
-    });
-
-    console.log('Subject updated successfully:', id);
+    });    console.log('Subject updated successfully:', id);
 
     // Clear cache to ensure fresh data
-    cacheUtils.clearByPattern('subjects');
+    cacheUtils.invalidate('subjects');
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true, 
       message: 'Subject updated successfully' 
     });
@@ -236,12 +223,10 @@ export async function DELETE(req: NextRequest) {
         { success: false, error: 'Subject ID is required' },
         { status: 400 }
       );
-    }
-
-    console.log('Deleting subject:', id);
+    }    console.log('Deleting subject:', id);
 
     // Check if subject exists
-    const subjectRef = firebaseAdmin.firestore.collection('subjects').doc(id);
+    const subjectRef = firebaseAdmin.db.collection('subjects').doc(id);
     const subjectDoc = await subjectRef.get();
 
     if (!subjectDoc.exists) {
@@ -258,14 +243,12 @@ export async function DELETE(req: NextRequest) {
     // - Check questions collection for references
 
     // Delete the document
-    await subjectRef.delete();
-
-    console.log('Subject deleted successfully:', id);
+    await subjectRef.delete();    console.log('Subject deleted successfully:', id);
 
     // Clear cache to ensure fresh data
-    cacheUtils.clearByPattern('subjects');
+    cacheUtils.invalidate('subjects');
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true, 
       message: 'Subject deleted successfully' 
     });

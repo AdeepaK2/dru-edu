@@ -51,11 +51,10 @@ export default function VideoDetail() {
         // Fetch all classes
         const fetchedClasses = await ClassFirestoreService.getAllClasses();
         setAllClasses(fetchedClasses);
-        
-        // Create a map of class IDs to class data
+          // Create a map of class IDs to class data
         const classMap: Record<string, ClassDocument> = {};
         for (const cls of fetchedClasses) {
-          classMap[cls._id] = cls;
+          classMap[cls.id] = cls;
         }
         setClasses(classMap);
         
@@ -305,18 +304,10 @@ export default function VideoDetail() {
                       <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line mb-6">
                         {video.description}
                       </p>
-                      
-                      <div className="flex flex-wrap gap-2 mb-6">
+                        <div className="flex flex-wrap gap-2 mb-6">
                         <div className="flex items-center px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-800/30 text-blue-800 dark:text-blue-300 text-sm">                          <School className="h-4 w-4 mr-1" />
-                          <span>{video.subject}</span>
-                        </div>
-                        
-                        {video.year && (
-                          <div className="flex items-center px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-800/30 text-purple-800 dark:text-purple-300 text-sm">                          <GraduationCap className="h-4 w-4 mr-1" />
-                          <span>{video.year}</span>
-                          </div>
-                        )}
-                        
+                          <span>{video.subjectName || 'Unknown Subject'}</span>
+                        </div>                        
                         {video.duration && (
                           <div className="flex items-center px-3 py-1 rounded-full bg-green-100 dark:bg-green-800/30 text-green-800 dark:text-green-300 text-sm">                          <Clock className="h-4 w-4 mr-1" />
                           <span>{formatDuration(video.duration)}</span>
@@ -365,15 +356,14 @@ export default function VideoDetail() {
                 {isEditing ? (
                   <div className="max-h-96 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-md">
                     {allClasses.length > 0 ? (
-                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {allClasses.map(cls => (
-                          <li key={cls._id}>
+                      <ul className="divide-y divide-gray-200 dark:divide-gray-700">                        {allClasses.map(cls => (
+                          <li key={cls.id}>
                             <label className="flex items-center px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer">
                               <input
                                 type="checkbox"
                                 className="mr-3 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                checked={selectedClassIds.includes(cls._id)}
-                                onChange={() => toggleClassSelection(cls._id)}
+                                checked={selectedClassIds.includes(cls.id)}
+                                onChange={() => toggleClassSelection(cls.id)}
                               />
                               <div>
                                 <div className="font-medium text-gray-900 dark:text-white">

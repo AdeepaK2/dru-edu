@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { MELBOURNE_TIMEZONE } from '@/utils/timezone';
+
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
 
 export function TimezoneProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {

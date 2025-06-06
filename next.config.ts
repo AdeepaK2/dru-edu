@@ -4,19 +4,34 @@ const nextConfig: NextConfig = {
   env: {
     TZ: 'Australia/Melbourne',
   },
-  // Configure for Firebase hosting
-  output: 'standalone',
+  // Conditional configuration based on environment
+  ...(process.env.NODE_ENV === 'production' && process.env.FIREBASE_DEPLOY === 'true' 
+    ? {
+        // Static export for Firebase hosting deployment
+        output: 'export',
+        trailingSlash: true,
+        images: {
+          unoptimized: true,
+        },
+      }
+    : {
+        // Development configuration with API routes
+        output: 'standalone',
+        images: {
+          formats: ['image/webp', 'image/avif'],
+        },
+      }
+  ),
   // Move serverComponentsExternalPackages to root level
   serverExternalPackages: ['firebase-admin'],
   // Performance optimizations
   poweredByHeader: false,
-  // Enable compression
-  compress: true,
-  // Optimize images
-  images: {
-    formats: ['image/webp', 'image/avif'],
+  // Custom webpack configuration to avoid the minification issue
+  webpack: (config) => {
+    // Completely disable minification to avoid the plugin error
+    config.optimization.minimize = false;
+    return config;
   },
-  // swcMinify is enabled by default in Next.js 15
 };
 
 export default nextConfig;

@@ -98,7 +98,6 @@ export const questionService = {
     // Now delete the question
     await deleteDoc(doc(db, QUESTIONS_COLLECTION, id));
   },
-
   // List questions with filters
   async listQuestions(filters?: {
     type?: 'mcq' | 'essay';
@@ -106,7 +105,7 @@ export const questionService = {
     difficulty?: 'easy' | 'medium' | 'hard';
     topic?: string;
   }): Promise<Question[]> {
-    let q = collection(db, QUESTIONS_COLLECTION);
+    const collectionRef = collection(db, QUESTIONS_COLLECTION);
     
     // Apply filters if provided
     if (filters) {
@@ -128,16 +127,20 @@ export const questionService = {
         constraints.push(where('topic', '==', filters.topic));
       }
       
-      q = query(q, ...constraints, orderBy('createdAt', 'desc'));
+      const q = query(collectionRef, ...constraints, orderBy('createdAt', 'desc'));
+      const questionSnapshots = await getDocs(q);
+      return questionSnapshots.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as Question));
     } else {
-      q = query(q, orderBy('createdAt', 'desc'));
+      const q = query(collectionRef, orderBy('createdAt', 'desc'));
+      const questionSnapshots = await getDocs(q);
+      return questionSnapshots.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as Question));
     }
-    
-    const questionSnapshots = await getDocs(q);
-    return questionSnapshots.docs.map(doc => ({
-      ...doc.data(),
-      id: doc.id
-    } as Question));
   }
 };
 
@@ -279,10 +282,9 @@ export const questionBankService = {
 
   // List question banks with filters
   async listQuestionBanks(filters?: {
-    subjectId?: string;
-    grade?: string;
+    subjectId?: string;    grade?: string;
   }): Promise<QuestionBank[]> {
-    let q = collection(db, QUESTION_BANKS_COLLECTION);
+    const collectionRef = collection(db, QUESTION_BANKS_COLLECTION);
     
     // Apply filters if provided
     if (filters) {
@@ -296,16 +298,20 @@ export const questionBankService = {
         constraints.push(where('grade', '==', filters.grade));
       }
       
-      q = query(q, ...constraints, orderBy('createdAt', 'desc'));
+      const q = query(collectionRef, ...constraints, orderBy('createdAt', 'desc'));
+      const bankSnapshots = await getDocs(q);
+      return bankSnapshots.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as QuestionBank));
     } else {
-      q = query(q, orderBy('createdAt', 'desc'));
+      const q = query(collectionRef, orderBy('createdAt', 'desc'));
+      const bankSnapshots = await getDocs(q);
+      return bankSnapshots.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as QuestionBank));
     }
-    
-    const bankSnapshots = await getDocs(q);
-    return bankSnapshots.docs.map(doc => ({
-      ...doc.data(),
-      id: doc.id
-    } as QuestionBank));
   }
 };
 
@@ -344,11 +350,10 @@ export const questionBankAssignmentService = {
 
   // List assignments with filters
   async listAssignments(filters?: {
-    classId?: string;
-    bankId?: string;
+    classId?: string;    bankId?: string;
     status?: 'active' | 'draft' | 'archived';
   }): Promise<QuestionBankAssignment[]> {
-    let q = collection(db, ASSIGNMENTS_COLLECTION);
+    const collectionRef = collection(db, ASSIGNMENTS_COLLECTION);
     
     // Apply filters
     if (filters) {
@@ -366,15 +371,19 @@ export const questionBankAssignmentService = {
         constraints.push(where('status', '==', filters.status));
       }
       
-      q = query(q, ...constraints, orderBy('assignedAt', 'desc'));
+      const q = query(collectionRef, ...constraints, orderBy('assignedAt', 'desc'));
+      const assignmentSnapshots = await getDocs(q);
+      return assignmentSnapshots.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as QuestionBankAssignment));
     } else {
-      q = query(q, orderBy('assignedAt', 'desc'));
+      const q = query(collectionRef, orderBy('assignedAt', 'desc'));
+      const assignmentSnapshots = await getDocs(q);
+      return assignmentSnapshots.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      } as QuestionBankAssignment));
     }
-    
-    const assignmentSnapshots = await getDocs(q);
-    return assignmentSnapshots.docs.map(doc => ({
-      ...doc.data(),
-      id: doc.id
-    } as QuestionBankAssignment));
   }
 };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Plus, Check } from 'lucide-react';
 import { QuestionBank, Question } from '@/models/questionBankSchema';
@@ -9,15 +9,10 @@ import { questionBankService, questionService } from '@/apiservices/questionBank
 import { Button } from '@/components/ui';
 import QuestionForm from '@/components/questions/QuestionForm';
 
-interface AddQuestionsPageProps {
-  params: {
-    id: string;
-  };
-}
-
-export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
+export default function AddQuestionsPage() {
   const router = useRouter();
-  const bankId = params.id;
+  const params = useParams();
+  const bankId = params.id as string;
   
   const [questionBank, setQuestionBank] = useState<QuestionBank | null>(null);
   const [selectedTab, setSelectedTab] = useState<'new' | 'existing'>('new');

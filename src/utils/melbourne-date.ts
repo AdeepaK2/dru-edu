@@ -1,4 +1,13 @@
-import { MELBOURNE_TIMEZONE, formatMelbourneDate } from './timezone';
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
+
+// Helper function to format dates in Melbourne timezone
+const formatMelbourneDate = (date: Date, options?: Intl.DateTimeFormatOptions) => {
+  const defaultOptions = {
+    timeZone: MELBOURNE_TIMEZONE,
+    ...options
+  };
+  return date.toLocaleString('en-AU', defaultOptions);
+};
 
 /**
  * MelbourneDate utility class that ensures all date operations

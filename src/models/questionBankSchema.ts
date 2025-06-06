@@ -51,6 +51,9 @@ export interface EssayQuestion extends BaseQuestion {
   suggestedAnswerContent?: string;
   // Suggested answer as image
   suggestedAnswerImageUrl?: string;
+  // Word requirements for essay questions
+  wordLimit?: number;
+  minWordCount?: number;
 }
 
 // Union type for all question types

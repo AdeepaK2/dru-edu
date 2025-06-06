@@ -92,7 +92,8 @@ async function createTeacherWelcomeEmail(to: string, teacherName: string, passwo
 }
 
 // POST - Create a new teacher
-export async function POST(req: NextRequest) {  try {
+export async function POST(req: NextRequest) {
+  try {
     // Parse and validate the request body
     const body = await req.json();
     console.log('Received teacher data:', body);
@@ -107,7 +108,9 @@ export async function POST(req: NextRequest) {  try {
     
     console.log('Processed teacher data:', processedBody);
     
-    const validatedData = teacherSchema.safeParse(processedBody);    if (!validatedData.success) {
+    const validatedData = teacherSchema.safeParse(processedBody);
+    
+    if (!validatedData.success) {
       console.error('Validation failed:', validatedData.error.issues);
       return NextResponse.json(
         { 
@@ -155,21 +158,23 @@ export async function POST(req: NextRequest) {  try {
       teacherData.email, 
       generatedPassword, 
       teacherData.name
-    );      // Prepare teacher document data (filter out undefined values)
+    );
+    
+    // Prepare teacher document data (filter out undefined values)
     const teacherDocument: Omit<TeacherDocument, 'id'> = {
       name: teacherData.name,
       email: teacherData.email,
       phone: teacherData.phone || '',
       countryCode: teacherData.countryCode || '+61',
       subject: teacherData.subject,
-      qualifications: teacherData.qualifications || '',
-      bio: teacherData.bio || '',
+      qualifications: teacherData.qualifications || '',      bio: teacherData.bio || '',
       status: teacherData.status,
       hireDate: teacherData.hireDate || new Date().toISOString().split('T')[0],
       address: teacherData.address || '',
       avatar: initials,
       classesAssigned: 0,
-      studentsCount: 0,      uid: userRecord.uid,
+      studentsCount: 0,
+      uid: userRecord.uid,
       createdAt: FieldValue.serverTimestamp() as any,
       updatedAt: FieldValue.serverTimestamp() as any
     };

@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read/write access to all authenticated users for now
+    // You should customize these rules based on your security requirements
+    
+    // Subjects collection
+    match /subjects/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Classes collection
+    match /classes/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Teachers collection
+    match /teachers/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Students collection
+    match /students/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Question Banks collection
+    match /questionBanks/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Questions collection
+    match /questions/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Question Bank Assignments collection
+    match /questionBankAssignments/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Videos collection
+    match /videos/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Lessons collection
+    match /lessons/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Centers collection (if you have physical centers)
+    match /centers/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Admin collection
+    match /admins/{document} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // User profiles collection
+    match /userProfiles/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public read access for certain collections (adjust as needed)
+    match /publicContent/{document} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}

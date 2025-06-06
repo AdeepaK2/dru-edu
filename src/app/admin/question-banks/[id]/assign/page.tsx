@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { QuestionBank, QuestionBankAssignment } from '@/models/questionBankSchema';
@@ -30,9 +30,10 @@ interface AssignBankPageProps {
   };
 }
 
-export default function AssignBankPage({ params }: AssignBankPageProps) {
+export default function AssignBankPage() {
   const router = useRouter();
-  const bankId = params.id;
+  const params = useParams();
+  const bankId = params.id as string;
   
   const [questionBank, setQuestionBank] = useState<QuestionBank | null>(null);
   const [classes, setClasses] = useState<Class[]>([]);

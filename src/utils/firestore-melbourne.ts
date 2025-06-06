@@ -16,7 +16,27 @@ import {
   Timestamp
 } from 'firebase/firestore';
 import { firestore } from './firebase-client';
-import { createMelbourneFirestoreTimestamp, formatFirestoreTimestamp } from './timezone';
+
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
+
+// Helper functions for Melbourne timezone
+const createMelbourneFirestoreTimestamp = () => {
+  return Timestamp.now();
+};
+
+const formatFirestoreTimestamp = (timestamp: any) => {
+  if (!timestamp) return null;
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return date.toLocaleString('en-AU', {
+    timeZone: MELBOURNE_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+};
 
 // Helper to add Melbourne timezone metadata to documents
 const addTimezoneMetadata = (data: any) => {
