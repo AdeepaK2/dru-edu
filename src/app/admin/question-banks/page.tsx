@@ -5,10 +5,14 @@ import Link from 'next/link';
 import { QuestionBank } from '@/models/questionBankSchema';
 import { questionBankService } from '@/apiservices/questionBankFirestoreService';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
 import { SubjectDocument } from '@/models/subjectSchema';
 import QuestionBankModal from '@/components/modals/QuestionBankModal';
-import { Button } from '@/components/ui';
-import { getAuth } from 'firebase/auth';
+import QuestionBankDetailModal from '@/components/modals/QuestionBankDetailModal';
+import QuestionManagementModal from '@/components/modals/QuestionManagementModal';
+import ClassAssignmentModal from '@/components/modals/ClassAssignmentModal';
+import { Button, ConfirmDialog } from '@/components/ui';
+import { auth } from '@/utils/firebase-client';
 import { serverTimestamp, Timestamp } from 'firebase/firestore';
 
 // Interface for teachers to display in assignment dropdown
@@ -29,15 +33,22 @@ export default function QuestionBanksPage() {
     grade: ''
   });
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
-  const [assigningTeachers, setAssigningTeachers] = useState<{
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);  const [assigningTeachers, setAssigningTeachers] = useState<{
     bankId: string, 
     showing: boolean, 
     selectedTeachers: string[]
   }>({
     bankId: '',
     showing: false,
-    selectedTeachers: []  });
+    selectedTeachers: []
+  });  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [bankToDelete, setBankToDelete] = useState<QuestionBank | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+    // Modal states
+  const [selectedBank, setSelectedBank] = useState<QuestionBank | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showQuestionModal, setShowQuestionModal] = useState(false);
+  const [showClassAssignmentModal, setShowClassAssignmentModal] = useState(false);
 
   // Grades list
   const grades = [
@@ -68,22 +79,12 @@ export default function QuestionBanksPage() {
 
     fetchSubjects();
   }, []);
-
   // Fetch teachers
   useEffect(() => {
     const fetchTeachers = async () => {
       try {
-        const response = await fetch('/api/teacher');
-        if (response.ok) {
-          const teacherData = await response.json();
-          setTeachers(teacherData.map((teacher: any) => ({
-            id: teacher.id,
-            name: teacher.name,
-            email: teacher.email
-          })));
-        } else {
-          console.error('Failed to fetch teachers');
-        }
+        const teacherData = await TeacherFirestoreService.getTeachersForSelection();
+        setTeachers(teacherData);
       } catch (err) {
         console.error('Error fetching teachers:', err);
       }
@@ -137,21 +138,32 @@ export default function QuestionBanksPage() {
     setEditingBank(bank);
     setShowAddBankModal(true);
   };
-
   // Handle delete bank click
-  const handleDeleteBank = async (bankId: string) => {
-    if (!window.confirm('Are you sure you want to delete this question bank?')) {
-      return;
-    }
+  const handleDeleteClick = (bank: QuestionBank) => {
+    setBankToDelete(bank);
+    setShowDeleteConfirm(true);
+  };
+
+  // Handle delete bank confirmation
+  const handleDeleteBank = async () => {
+    if (!bankToDelete) return;
+    
+    setActionLoading('delete');
     
     try {
-      await questionBankService.deleteQuestionBank(bankId);
+      await questionBankService.deleteQuestionBank(bankToDelete.id);
       
       // Update state after successful deletion
-      setQuestionBanks(prev => prev.filter(bank => bank.id !== bankId));
+      setQuestionBanks(prev => prev.filter(bank => bank.id !== bankToDelete.id));
+      
+      // Close the confirmation dialog
+      setShowDeleteConfirm(false);
+      setBankToDelete(null);
     } catch (err: any) {
       console.error("Error deleting question bank:", err);
       setError(`Error: ${err.message || 'Failed to delete question bank'}`);
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -241,7 +253,6 @@ export default function QuestionBanksPage() {
       setError(`Error: ${err.message || 'Failed to save question bank'}`);
     }
   };
-
   // Get assigned teacher names for a bank
   const getAssignedTeacherNames = (bank: QuestionBank): string => {
     if (!bank.assignedTeacherIds || bank.assignedTeacherIds.length === 0) {
@@ -265,6 +276,40 @@ export default function QuestionBanksPage() {
     }
     
     return `${assignedTeachers[0].name} and ${assignedTeachers.length - 1} others`;
+  };
+
+  // Modal handlers
+  const handleViewQuestions = (bank: QuestionBank) => {
+    setSelectedBank(bank);
+    setShowDetailModal(true);
+  };
+  const handleAddQuestions = (bank: QuestionBank) => {
+    setSelectedBank(bank);
+    setShowQuestionModal(true);
+  };
+
+  const handleAssignToClasses = (bank: QuestionBank) => {
+    setSelectedBank(bank);
+    setShowClassAssignmentModal(true);
+  };
+
+  const handleQuestionBankUpdate = (updatedBank: QuestionBank) => {
+    setQuestionBanks(prev => prev.map(bank => 
+      bank.id === updatedBank.id ? updatedBank : bank
+    ));
+    setSelectedBank(updatedBank);
+  };
+
+  const closeModals = () => {
+    setShowDetailModal(false);
+    setShowQuestionModal(false);
+    setShowClassAssignmentModal(false);
+    setSelectedBank(null);
+  };
+
+  const handleAssignmentComplete = () => {
+    // Optionally refresh data or show success message
+    console.log('Assignment completed successfully');
   };
 
   return (
@@ -374,11 +419,10 @@ export default function QuestionBanksPage() {
                         onClick={() => handleEditBank(bank)}
                       >
                         Edit
-                      </Button>
-                      <Button
+                      </Button>                      <Button
                         variant="danger"
                         size="sm"
-                        onClick={() => handleDeleteBank(bank.id)}
+                        onClick={() => handleDeleteClick(bank)}
                       >
                         Delete
                       </Button>
@@ -454,15 +498,36 @@ export default function QuestionBanksPage() {
                         </div>
                       </div>
                     )}
-                  </div>
-                  
-                  <div className="mt-6 flex justify-between">
-                    <Link 
-                      href={`/admin/question-banks/${bank.id}`}
-                      className="text-blue-600 hover:text-blue-800 text-sm flex items-center"
-                    >
-                      View Questions →
-                    </Link>
+                  </div>                  
+                  <div className="mt-6 flex justify-between items-center">
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewQuestions(bank)}
+                        className="flex items-center space-x-1"
+                      >
+                        <span>View Questions</span>
+                      </Button>
+                      
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleAddQuestions(bank)}
+                        className="flex items-center space-x-1"
+                      >
+                        <span>Add Questions</span>
+                      </Button>
+                      
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleAssignToClasses(bank)}
+                        className="flex items-center space-x-1"
+                      >
+                        <span>Assign to Classes</span>
+                      </Button>
+                    </div>
                     
                     <p className="text-xs text-gray-500">
                       Created: {bank.createdAt.toDate().toLocaleDateString()}
@@ -472,9 +537,7 @@ export default function QuestionBanksPage() {
               </div>
             ))}
           </div>
-        )}
-        
-        {/* Question bank modal */}
+        )}        {/* Question bank modal */}
         <QuestionBankModal
           isOpen={showAddBankModal}
           onClose={toggleAddBankModal}
@@ -483,6 +546,53 @@ export default function QuestionBanksPage() {
           submitButtonText={editingBank ? 'Update Question Bank' : 'Create Question Bank'}
           initialData={editingBank || undefined}
         />
+
+        {/* Question Bank Detail Modal */}
+        {selectedBank && (
+          <QuestionBankDetailModal
+            isOpen={showDetailModal}
+            onClose={closeModals}
+            questionBank={selectedBank}
+            onQuestionBankUpdate={handleQuestionBankUpdate}
+            onAddQuestions={handleAddQuestions}
+          />
+        )}        {/* Question Management Modal */}
+        {selectedBank && (
+          <QuestionManagementModal
+            isOpen={showQuestionModal}
+            onClose={closeModals}
+            questionBank={selectedBank}
+            onQuestionBankUpdate={handleQuestionBankUpdate}
+          />
+        )}
+
+        {/* Class Assignment Modal */}
+        {selectedBank && (
+          <ClassAssignmentModal
+            isOpen={showClassAssignmentModal}
+            onClose={closeModals}
+            questionBank={selectedBank}
+            onAssignmentComplete={handleAssignmentComplete}
+          />
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        {showDeleteConfirm && bankToDelete && (
+          <ConfirmDialog
+            isOpen={showDeleteConfirm}
+            onClose={() => {
+              setShowDeleteConfirm(false);
+              setBankToDelete(null);
+            }}
+            onConfirm={handleDeleteBank}
+            isLoading={actionLoading === 'delete'}
+            title="Delete Question Bank"
+            description={`Are you sure you want to delete "${bankToDelete.name}"? This will permanently delete all questions in this bank and cannot be undone.`}
+            confirmText="Delete"
+            cancelText="Cancel"
+            variant="danger"
+          />
+        )}
       </div>
     </div>
   );

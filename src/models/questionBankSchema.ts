@@ -72,6 +72,8 @@ export interface QuestionBank {
   questionIds: string[];
   // Teacher assignments
   assignedTeacherIds?: string[];
+  // Class assignments (optional)
+  assignedClassIds?: string[];
   // Quick stats
   totalQuestions: number;
   mcqCount: number;

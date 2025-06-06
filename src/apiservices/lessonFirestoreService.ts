@@ -24,6 +24,42 @@ import {
   validateLessonSetData,
 } from '@/models/lessonSchema';
 
+// Utility function to safely convert timestamps to Date objects
+const convertTimestampToDate = (timestamp: any): Date => {
+  if (!timestamp) {
+    return new Date();
+  }
+  
+  // If it's already a Date object
+  if (timestamp instanceof Date) {
+    return timestamp;
+  }
+  
+  // If it's a Firestore Timestamp with toDate method
+  if (timestamp && typeof timestamp.toDate === 'function') {
+    return timestamp.toDate();
+  }
+  
+  // If it's a timestamp-like object with seconds
+  if (timestamp && typeof timestamp.seconds === 'number') {
+    return new Date(timestamp.seconds * 1000);
+  }
+  
+  // If it's a number (Unix timestamp)
+  if (typeof timestamp === 'number') {
+    return new Date(timestamp);
+  }
+  
+  // If it's a string, try to parse it
+  if (typeof timestamp === 'string') {
+    const parsed = new Date(timestamp);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+  }
+  
+  // Fallback to current date
+  return new Date();
+};
+
 const LESSONS_COLLECTION = 'lessons';
 const LESSON_SETS_COLLECTION = 'lessonSets';
 
@@ -69,7 +105,6 @@ export class LessonFirestoreService {
       throw new Error(error instanceof Error ? error.message : 'Failed to delete lesson');
     }
   }
-
   static async getLesson(lessonId: string): Promise<LessonDocument | null> {
     try {
       const docRef = doc(db, LESSONS_COLLECTION, lessonId);
@@ -80,8 +115,8 @@ export class LessonFirestoreService {
         return {
           id: docSnap.id,
           ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
+          createdAt: convertTimestampToDate(data.createdAt),
+          updatedAt: convertTimestampToDate(data.updatedAt),
         } as LessonDocument;
       }
       
@@ -100,15 +135,14 @@ export class LessonFirestoreService {
         orderBy('order', 'asc'),
         orderBy('createdAt', 'desc')
       );
-      
-      const querySnapshot = await getDocs(q);
+        const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
+          createdAt: convertTimestampToDate(data.createdAt),
+          updatedAt: convertTimestampToDate(data.updatedAt),
         } as LessonDocument;
       });
     } catch (error) {
@@ -131,14 +165,13 @@ export class LessonFirestoreService {
 
     return onSnapshot(
       q,
-      (querySnapshot) => {
-        const lessons = querySnapshot.docs.map(doc => {
+      (querySnapshot) => {        const lessons = querySnapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
             ...data,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            updatedAt: data.updatedAt?.toDate() || new Date(),
+            createdAt: convertTimestampToDate(data.createdAt),
+            updatedAt: convertTimestampToDate(data.updatedAt),
           } as LessonDocument;
         });
         onSuccess(lessons);
@@ -200,7 +233,6 @@ export class LessonFirestoreService {
       throw new Error(error instanceof Error ? error.message : 'Failed to delete lesson set');
     }
   }
-
   static async getLessonSet(lessonSetId: string): Promise<LessonSetDocument | null> {
     try {
       const docRef = doc(db, LESSON_SETS_COLLECTION, lessonSetId);
@@ -211,8 +243,8 @@ export class LessonFirestoreService {
         return {
           id: docSnap.id,
           ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
+          createdAt: convertTimestampToDate(data.createdAt),
+          updatedAt: convertTimestampToDate(data.updatedAt),
         } as LessonSetDocument;
       }
       
@@ -231,15 +263,14 @@ export class LessonFirestoreService {
         orderBy('order', 'asc'),
         orderBy('createdAt', 'desc')
       );
-      
-      const querySnapshot = await getDocs(q);
+        const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           ...data,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
+          createdAt: convertTimestampToDate(data.createdAt),
+          updatedAt: convertTimestampToDate(data.updatedAt),
         } as LessonSetDocument;
       });
     } catch (error) {
@@ -262,14 +293,13 @@ export class LessonFirestoreService {
 
     return onSnapshot(
       q,
-      (querySnapshot) => {
-        const lessonSets = querySnapshot.docs.map(doc => {
+      (querySnapshot) => {        const lessonSets = querySnapshot.docs.map(doc => {
           const data = doc.data();
           return {
             id: doc.id,
             ...data,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            updatedAt: data.updatedAt?.toDate() || new Date(),
+            createdAt: convertTimestampToDate(data.createdAt),
+            updatedAt: convertTimestampToDate(data.updatedAt),
           } as LessonSetDocument;
         });
         onSuccess(lessonSets);

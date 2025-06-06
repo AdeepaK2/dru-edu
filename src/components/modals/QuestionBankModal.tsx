@@ -5,7 +5,10 @@ import { Modal, Button } from '@/components/ui';
 import { QuestionBank } from '@/models/questionBankSchema';
 import { SubjectDocument } from '@/models/subjectSchema';
 import { Teacher } from '@/models/teacherSchema';
+import { ClassDocument } from '@/models/classSchema';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
+import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
 
 interface QuestionBankModalProps {
   isOpen: boolean;
@@ -36,19 +39,23 @@ export default function QuestionBankModal({
     totalQuestions: 0,
     mcqCount: 0,
     essayCount: 0,
-    assignedTeacherIds: [] as string[]
+    assignedTeacherIds: [] as string[],
+    assignedClassIds: [] as string[]
   });
 
   const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [classes, setClasses] = useState<ClassDocument[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [loadingTeachers, setLoadingTeachers] = useState(false);
+  const [loadingClasses, setLoadingClasses] = useState(false);
 
-  // Fetch subjects and teachers when modal opens
+  // Fetch subjects, teachers, and classes when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchSubjects();
       fetchTeachers();
+      fetchClasses();
     }
   }, [isOpen]);
 
@@ -63,19 +70,27 @@ export default function QuestionBankModal({
       setLoadingSubjects(false);
     }
   };
-
   const fetchTeachers = async () => {
     setLoadingTeachers(true);
     try {
-      const response = await fetch('/api/teacher');
-      if (response.ok) {
-        const teacherList = await response.json();
-        setTeachers(teacherList);
-      }
+      const teacherList = await TeacherFirestoreService.getAllTeachers();
+      setTeachers(teacherList);
     } catch (error) {
       console.error('Error fetching teachers:', error);
     } finally {
       setLoadingTeachers(false);
+    }
+  };
+
+  const fetchClasses = async () => {
+    setLoadingClasses(true);
+    try {
+      const classList = await ClassFirestoreService.getAllClasses();
+      setClasses(classList);
+    } catch (error) {
+      console.error('Error fetching classes:', error);
+    } finally {
+      setLoadingClasses(false);
     }
   };
 
@@ -86,12 +101,14 @@ export default function QuestionBankModal({
         name: initialData.name || '',
         description: initialData.description || '',
         subjectId: initialData.subjectId || '',
-        subjectName: initialData.subjectName || '',        grade: initialData.grade || '',
+        subjectName: initialData.subjectName || '',
+        grade: initialData.grade || '',
         questionIds: initialData.questionIds || [],
         totalQuestions: initialData.totalQuestions || 0,
         mcqCount: initialData.mcqCount || 0,
         essayCount: initialData.essayCount || 0,
-        assignedTeacherIds: initialData.assignedTeacherIds || []
+        assignedTeacherIds: initialData.assignedTeacherIds || [],
+        assignedClassIds: initialData.assignedClassIds || []
       });
     } else if (isOpen) {
       // Reset form for new question bank
@@ -100,14 +117,17 @@ export default function QuestionBankModal({
         description: '',
         subjectId: '',
         subjectName: '',
-        grade: '',        questionIds: [],
+        grade: '',
+        questionIds: [],
         totalQuestions: 0,
         mcqCount: 0,
         essayCount: 0,
-        assignedTeacherIds: []
+        assignedTeacherIds: [],
+        assignedClassIds: []
       });
     }
   }, [isOpen, initialData]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -134,6 +154,15 @@ export default function QuestionBankModal({
       assignedTeacherIds: prev.assignedTeacherIds.includes(teacherId)
         ? prev.assignedTeacherIds.filter(id => id !== teacherId)
         : [...prev.assignedTeacherIds, teacherId]
+    }));
+  };
+  
+  const handleClassAssignment = (classId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      assignedClassIds: prev.assignedClassIds.includes(classId)
+        ? prev.assignedClassIds.filter(id => id !== classId)
+        : [...prev.assignedClassIds, classId]
     }));
   };
 
@@ -177,7 +206,9 @@ export default function QuestionBankModal({
               placeholder="Describe this question bank"
               rows={3}
             />
-          </div>          <div className="grid grid-cols-2 gap-4">
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Subject*
@@ -213,7 +244,9 @@ export default function QuestionBankModal({
                 className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
                 placeholder="Auto-filled from subject"
                 readOnly
-              />          </div>
+              />
+            </div>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -244,7 +277,36 @@ export default function QuestionBankModal({
               </div>
             )}
           </div>
-        </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              Assign to Classes (Optional)
+            </label>
+            {loadingClasses ? (
+              <div className="text-sm text-gray-500">Loading classes...</div>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
+                {classes.length === 0 ? (
+                  <div className="text-sm text-gray-500">No classes available</div>
+                ) : (
+                  classes.map((classItem) => (
+                    <label key={classItem.id} className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={formData.assignedClassIds.includes(classItem.id)}
+                        onChange={() => handleClassAssignment(classItem.id)}
+                        className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
+                      />
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900">{classItem.name}</div>
+                        <div className="text-xs text-gray-500">{classItem.subject} • Year: {classItem.year || 'N/A'}</div>
+                      </div>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">

@@ -4,16 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Plus, BookOpen, Edit, Trash2 } from 'lucide-react';
 import { QuestionBank, Question } from '@/models/questionBankSchema';
-import { Button } from '@/components/ui';
-
-// Mock timestamp for Firebase Timestamp
-const mockTimestamp = {
-  seconds: Math.floor(Date.now() / 1000),
-  nanoseconds: 0,
-  toDate: () => new Date()
-};
+import { questionBankService, questionService } from '@/apiservices/questionBankFirestoreService';
+import { Button, ConfirmDialog } from '@/components/ui';
 
 interface QuestionBankDetailPageProps {
   params: {
@@ -33,121 +27,59 @@ export default function QuestionBankDetailPage({ params }: QuestionBankDetailPag
     type: '',
     difficulty: ''
   });
-
-  // Load question bank details
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  // Load question bank details and questions
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    
-    // Simulate API delay
-    const timer = setTimeout(() => {
+    const loadQuestionBankData = async () => {
+      setLoading(true);
+      setError(null);
+      
       try {
-        // In a real app, fetch from Firestore
-        // const bank = await questionBankService.getQuestionBank(bankId);
-        // if (!bank) throw new Error('Question bank not found');
+        // Fetch question bank details
+        const bank = await questionBankService.getQuestionBank(bankId);
+        if (!bank) {
+          throw new Error('Question bank not found');
+        }
         
-        // Mock bank data for demo
-        const mockBank: QuestionBank = {
-          id: bankId,
-          name: 'Algebra Basics',
-          description: 'Fundamental concepts of algebra for 6th grade',
-          subjectId: 'math-g6',
-          subjectName: 'Mathematics',
-          grade: 'Grade 6',
-          questionIds: ['q1', 'q2', 'q3'],
-          totalQuestions: 3,
-          mcqCount: 2,
-          essayCount: 1,
-          createdAt: mockTimestamp as any,
-          updatedAt: mockTimestamp as any
-        };
+        setQuestionBank(bank);
         
-        // Mock questions data
-        const mockQuestions: Question[] = [
-          {
-            id: 'q1',
-            title: 'Properties of Addition',
-            content: 'What property of addition is demonstrated by the equation 3 + 5 = 5 + 3?',
-            imageUrl: '',
-            type: 'mcq',
-            topic: 'Algebra',
-            subtopic: 'Properties of Operations',
-            difficultyLevel: 'easy',
-            points: 5,
-            options: [
-              { id: '1', text: 'Commutative Property', isCorrect: true },
-              { id: '2', text: 'Associative Property', isCorrect: false },
-              { id: '3', text: 'Distributive Property', isCorrect: false },
-              { id: '4', text: 'Identity Property', isCorrect: false }
-            ],
-            correctAnswer: 'A',
-            explanation: 'The commutative property states that changing the order of the addends does not change the sum.',
-            createdAt: mockTimestamp as any,
-            updatedAt: mockTimestamp as any
-          },
-          {
-            id: 'q2',
-            title: 'Solving Equations',
-            content: 'Solve for x: 2x + 5 = 15',
-            imageUrl: '',
-            type: 'mcq',
-            topic: 'Algebra',
-            subtopic: 'Linear Equations',
-            difficultyLevel: 'medium',
-            points: 10,
-            options: [
-              { id: '1', text: 'x = 5', isCorrect: true },
-              { id: '2', text: 'x = 7', isCorrect: false },
-              { id: '3', text: 'x = 10', isCorrect: false },
-              { id: '4', text: 'x = 4', isCorrect: false }
-            ],
-            correctAnswer: 'A',
-            explanation: 'To solve, subtract 5 from both sides: 2x = 10. Then divide both sides by 2: x = 5.',
-            createdAt: mockTimestamp as any,
-            updatedAt: mockTimestamp as any
-          },
-          {
-            id: 'q3',
-            title: 'Essay on Applications of Algebra',
-            content: 'Explain three real-world applications of algebra and how algebraic concepts help solve practical problems.',
-            imageUrl: '',
-            type: 'essay',
-            topic: 'Algebra',
-            subtopic: 'Real-world Applications',
-            difficultyLevel: 'hard',
-            points: 20,
-            suggestedAnswerContent: 'A comprehensive essay should explain how algebra is used in: 1) Financial planning - calculating interest, investments, etc. 2) Engineering - designing structures, calculating forces. 3) Computer Science - algorithms and coding logic. Each application should demonstrate how equations and variables represent real-world scenarios.',
-            wordLimit: 500,
-            minWordCount: 200,
-            createdAt: mockTimestamp as any,
-            updatedAt: mockTimestamp as any
+        // Fetch all questions in this bank
+        if (bank.questionIds && bank.questionIds.length > 0) {
+          const questionPromises = bank.questionIds.map(questionId => 
+            questionService.getQuestion(questionId)
+          );
+          
+          const fetchedQuestions = await Promise.all(questionPromises);
+          const validQuestions = fetchedQuestions.filter(q => q !== null) as Question[];
+          
+          // Apply filters
+          let filteredQuestions = [...validQuestions];
+          
+          if (filter.type) {
+            filteredQuestions = filteredQuestions.filter(q => q.type === filter.type);
           }
-        ];
-        
-        setQuestionBank(mockBank);
-        
-        // Apply filters
-        let filteredQuestions = [...mockQuestions];
-        
-        if (filter.type) {
-          filteredQuestions = filteredQuestions.filter(q => q.type === filter.type);
+          
+          if (filter.difficulty) {
+            filteredQuestions = filteredQuestions.filter(q => q.difficultyLevel === filter.difficulty);
+          }
+          
+          setQuestions(filteredQuestions);
+        } else {
+          setQuestions([]);
         }
         
-        if (filter.difficulty) {
-          filteredQuestions = filteredQuestions.filter(q => q.difficultyLevel === filter.difficulty);
-        }
-        
-        setQuestions(filteredQuestions);
-        setLoading(false);
       } catch (err: any) {
         console.error("Error loading question bank:", err);
         setError(`Error: ${err.message || 'Failed to load question bank'}`);
+      } finally {
         setLoading(false);
       }
-    }, 800);
-    
-    return () => clearTimeout(timer);
+    };
+      loadQuestionBankData();
   }, [bankId, filter]);
+
   // Handle filter changes
   const handleFilterChange = (type: keyof typeof filter, value: string) => {
     setFilter(prev => ({
@@ -157,36 +89,46 @@ export default function QuestionBankDetailPage({ params }: QuestionBankDetailPag
   };
 
   // Handle removing a question from the bank
-  const handleRemoveQuestion = async (questionId: string) => {
-    if (!window.confirm('Are you sure you want to remove this question from the bank?')) {
-      return;
-    }
+  const handleRemoveQuestionClick = (question: Question) => {
+    setQuestionToDelete(question);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleRemoveQuestion = async () => {
+    if (!questionToDelete) return;
+    
+    setActionLoading('remove');
     
     try {
-      // In a real app, call API to remove question
-      // await questionBankService.removeQuestionsFromBank(bankId, [questionId]);
+      // Remove question from the bank
+      await questionBankService.removeQuestionsFromBank(bankId, [questionToDelete.id]);
       
-      // Update state
-      setQuestions(prev => prev.filter(q => q.id !== questionId));
+      // Update local state
+      setQuestions(prev => prev.filter(q => q.id !== questionToDelete.id));
       
       if (questionBank) {
         const updatedBank = { ...questionBank };
-        updatedBank.questionIds = questionBank.questionIds.filter(id => id !== questionId);
+        updatedBank.questionIds = questionBank.questionIds.filter(id => id !== questionToDelete.id);
         updatedBank.totalQuestions--;
         
         // Update counts based on question type
-        const removedQuestion = questions.find(q => q.id === questionId);
-        if (removedQuestion?.type === 'mcq') {
+        if (questionToDelete.type === 'mcq') {
           updatedBank.mcqCount = Math.max(0, updatedBank.mcqCount - 1);
-        } else if (removedQuestion?.type === 'essay') {
+        } else if (questionToDelete.type === 'essay') {
           updatedBank.essayCount = Math.max(0, updatedBank.essayCount - 1);
         }
         
         setQuestionBank(updatedBank);
       }
+
+      // Close confirmation dialog
+      setShowDeleteConfirm(false);
+      setQuestionToDelete(null);
+      
     } catch (err: any) {
       console.error("Error removing question:", err);
       setError(`Error: ${err.message || 'Failed to remove question'}`);
+    } finally {      setActionLoading(null);
     }
   };
 
@@ -334,16 +276,22 @@ export default function QuestionBankDetailPage({ params }: QuestionBankDetailPag
             </button>
           </div>
         </div>
-        
-        {/* Questions List */}
+          {/* Questions List */}
         {questions.length === 0 ? (
           <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <p className="text-gray-500">No questions found matching your filters.</p>
+            <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-500 mb-2">
+              {questionBank?.questionIds.length === 0 
+                ? 'This question bank has no questions yet.' 
+                : 'No questions found matching your filters.'
+              }
+            </p>
             <Button
               variant="primary"
               className="mt-4"
               onClick={() => router.push(`/admin/question-banks/${bankId}/add-questions`)}
             >
+              <Plus className="h-4 w-4 mr-2" />
               Add Questions
             </Button>
           </div>
@@ -385,18 +333,22 @@ export default function QuestionBankDetailPage({ params }: QuestionBankDetailPag
                     </div>
                     
                     <div className="flex space-x-2">
-                      <Link 
-                        href={`/admin/question/edit/${question.id}`}
-                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/admin/question/edit/${question.id}`)}
                       >
+                        <Edit className="h-4 w-4 mr-1" />
                         Edit
-                      </Link>
-                      <button
-                        onClick={() => handleRemoveQuestion(question.id)}
-                        className="text-red-600 hover:text-red-800 text-sm"
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleRemoveQuestionClick(question)}
                       >
+                        <Trash2 className="h-4 w-4 mr-1" />
                         Remove
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   
@@ -436,7 +388,8 @@ export default function QuestionBankDetailPage({ params }: QuestionBankDetailPag
                             }`}>
                               {getOptionLetter(index)}
                             </span>
-                            <span>{option.text}</span>                            {option.isCorrect && (
+                            <span>{option.text}</span>
+                            {option.isCorrect && (
                               <CheckCircle className="h-5 w-5 ml-auto text-green-600" />
                             )}
                           </div>
@@ -470,6 +423,24 @@ export default function QuestionBankDetailPage({ params }: QuestionBankDetailPag
               </div>
             ))}
           </div>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        {showDeleteConfirm && questionToDelete && (
+          <ConfirmDialog
+            isOpen={showDeleteConfirm}
+            onClose={() => {
+              setShowDeleteConfirm(false);
+              setQuestionToDelete(null);
+            }}
+            onConfirm={handleRemoveQuestion}
+            isLoading={actionLoading === 'remove'}
+            title="Remove Question"
+            description={`Are you sure you want to remove "${questionToDelete.title}" from this question bank? The question itself will not be deleted.`}
+            confirmText="Remove"
+            cancelText="Cancel"
+            variant="danger"
+          />
         )}
       </div>
     </div>

@@ -6,7 +6,6 @@ import { firestore } from '@/utils/firebase-client';
 import Link from 'next/link';
 import { questionService, questionBankService } from '@/apiservices/questionBankFirestoreService';
 import { Question, QuestionBank, MCQQuestion, EssayQuestion } from '@/models/questionBankSchema';
-import QuestionFormWithFirebase from '@/components/questions/QuestionFormWithFirebase';
 import { ArrowLeft, CheckCircle, FileText, Plus, Package } from 'lucide-react';
 
 // Define subject data structure that extends QuestionBank 
@@ -658,13 +657,7 @@ export default function QuestionsPage() {
                         to {selectedSubject?.name} {selectedSubject?.grade && `(${selectedSubject.grade})`}
                       </h3>
                       
-                      <QuestionFormWithFirebase
-                        questionType={questionType}
-                        subjectId={selectedSubject.id}
-                        subjectName={selectedSubject.name}
-                        onSubmit={handleQuestionSubmit}
-                        loading={loading}
-                      />
+              
                     </div>
                   </div>
                 </div>

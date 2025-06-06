@@ -40,16 +40,15 @@ export default function AdminLayout({
   useEffect(() => {
     prefetchAdminPages();
   }, []);
-  
-  useEffect(() => {
-    // Don't run auth checks on the login page to prevent circular redirects
-    if (pathname === '/admin/login') {
+    useEffect(() => {
+    // Don't run auth checks on the login and logout pages to prevent circular redirects
+    if (pathname === '/admin/login' || pathname === '/admin/logout') {
       setLoading(false);
       return () => {};
     }
 
-    // Skip auth check if already verified and not on login page
-    if (authChecked && pathname !== '/admin/login') {
+    // Skip auth check if already verified and not on login/logout pages
+    if (authChecked && pathname !== '/admin/login' && pathname !== '/admin/logout') {
       setLoading(false);
       return () => {};
     }
@@ -92,9 +91,8 @@ export default function AdminLayout({
         </div>
       </div>
     );
-  }
-  // Skip layout for login page
-  if (pathname === '/admin/login') {
+  }  // Skip layout for login and logout pages
+  if (pathname === '/admin/login' || pathname === '/admin/logout') {
     return <>{children}</>;
   }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getAuthToken } from '@/utils/auth-helper';
+import { QuestionImageService } from '@/apiservices/questionImageService';
 
 // Types for the image upload hook
 interface UploadOptions {
@@ -19,9 +19,8 @@ export const useImageUpload = () => {
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
-
   /**
-   * Upload an image with progress tracking
+   * Upload an image with progress tracking using Firebase Storage directly
    * 
    * @param file File to upload
    * @param options Upload options (type and optionId if needed)
@@ -41,38 +40,24 @@ export const useImageUpload = () => {
     setProgress(0);
     setError(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const token = getAuthToken();
-      if (!token) {
-        throw new Error('Authentication token not found');
+      let downloadURL: string;
+
+      // Use QuestionImageService to upload directly to Firebase Storage
+      if (options.type === 'question') {
+        downloadURL = await QuestionImageService.uploadQuestionImage(file, setProgress);
+      } else if (options.type === 'explanation') {
+        downloadURL = await QuestionImageService.uploadExplanationImage(file, setProgress);
+      } else if (options.type === 'option' && options.optionId) {
+        downloadURL = await QuestionImageService.uploadOptionImage(file, options.optionId, setProgress);
+      } else {
+        throw new Error('Invalid upload options');
       }
 
-      let url = `/api/questions/upload-image?type=${options.type}`;
-      if (options.type === 'option' && options.optionId) {
-        url += `&optionId=${options.optionId}`;
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || response.statusText);
-      }
-
-      const data = await response.json();
       setIsUploading(false);
       setProgress(100);
       
-      return { imageUrl: data.imageUrl, error: null };
+      return { imageUrl: downloadURL, error: null };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown upload error';
       setError(errorMessage);

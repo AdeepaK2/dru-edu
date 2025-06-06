@@ -1,19 +1,165 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Edit2, Trash2, BookOpen, Users, Clock, Target, Package, CheckCircle } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, BookOpen, Clock, Target, Package, CheckCircle, GripVertical } from 'lucide-react';
 import { Button, ConfirmDialog } from '@/components/ui';
 import { 
-  LessonSetDisplayData, 
   LessonDisplayData, 
-  LessonSetData, 
   LessonData,
-  lessonSetDocumentToDisplay,
   lessonDocumentToDisplay
 } from '@/models/lessonSchema';
 import { LessonFirestoreService } from '@/apiservices/lessonFirestoreService';
-import LessonSetModal from './LessonSetModal';
 import LessonModal from './LessonModal';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Sortable Lesson Item Component
+interface SortableLessonProps {
+  lesson: LessonDisplayData;
+  onEdit: (lesson: LessonDisplayData) => void;
+  onDelete: (lesson: LessonDisplayData) => void;
+  actionLoading: string | null;
+}
+
+function SortableLesson({ lesson, onEdit, onDelete, actionLoading }: SortableLessonProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: lesson.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`bg-gray-50 dark:bg-gray-700 rounded-lg p-4 ${
+        isDragging ? 'z-50 shadow-lg' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-start space-x-3 flex-1">
+          {/* Drag Handle */}
+          <div
+            {...attributes}
+            {...listeners}
+            className="mt-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            <GripVertical className="w-5 h-5" />
+          </div>
+          
+          <div className="flex-1">
+            <div className="flex items-start justify-between">
+              <div>
+                <h4 className="font-medium text-gray-900 dark:text-white">
+                  {lesson.name}
+                </h4>
+                {lesson.description && (
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                    {lesson.description}
+                  </p>
+                )}
+              </div>
+              <div className="flex space-x-1 ml-4">
+                <button
+                  onClick={() => onEdit(lesson)}
+                  disabled={actionLoading === 'update-lesson'}
+                  className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onDelete(lesson)}
+                  disabled={actionLoading === 'delete'}
+                  className="text-red-600 hover:text-red-800 disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-4 mt-3 text-sm text-gray-600 dark:text-gray-300">
+              <span className="flex items-center">
+                Order: {lesson.order}
+              </span>
+              {lesson.duration && (
+                <span className="flex items-center">
+                  <Clock className="w-4 h-4 mr-1" />
+                  {lesson.formattedDuration}
+                </span>
+              )}
+              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                lesson.isActive 
+                  ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+                  : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300'
+              }`}>
+                {lesson.isActive ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+
+            {/* Show additional lesson details */}
+            <div className="mt-3 space-y-2">
+              {lesson.objectives && lesson.objectives.length > 0 && (
+                <div className="flex items-start text-sm">
+                  <Target className="w-4 h-4 mr-2 mt-0.5 text-blue-500" />
+                  <div>
+                    <span className="font-medium">Objectives:</span>
+                    <ul className="list-disc list-inside ml-2 text-gray-600 dark:text-gray-300">
+                      {lesson.objectives.slice(0, 2).map((objective, index) => (
+                        <li key={index}>{objective}</li>
+                      ))}
+                      {lesson.objectives.length > 2 && (
+                        <li>... and {lesson.objectives.length - 2} more</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+              )}
+              
+              {lesson.materials && lesson.materials.length > 0 && (
+                <div className="flex items-start text-sm">
+                  <Package className="w-4 h-4 mr-2 mt-0.5 text-green-500" />
+                  <div>
+                    <span className="font-medium">Materials:</span>
+                    <span className="ml-2 text-gray-600 dark:text-gray-300">
+                      {lesson.materials.slice(0, 3).join(', ')}
+                      {lesson.materials.length > 3 && ` and ${lesson.materials.length - 3} more`}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface LessonManagementModalProps {
   isOpen: boolean;
@@ -28,42 +174,39 @@ export default function LessonManagementModal({
   subjectId,
   subjectName,
 }: LessonManagementModalProps) {
-  const [lessonSets, setLessonSets] = useState<LessonSetDisplayData[]>([]);
   const [lessons, setLessons] = useState<LessonDisplayData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   // Modal states
-  const [lessonSetModalOpen, setLessonSetModalOpen] = useState(false);
   const [lessonModalOpen, setLessonModalOpen] = useState(false);
-  const [selectedLessonSet, setSelectedLessonSet] = useState<LessonSetDisplayData | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<LessonDisplayData | null>(null);
   const [editMode, setEditMode] = useState(false);
 
   // Delete confirmation states
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteType, setDeleteType] = useState<'lessonSet' | 'lesson'>('lessonSet');
-  const [itemToDelete, setItemToDelete] = useState<LessonSetDisplayData | LessonDisplayData | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<LessonDisplayData | null>(null);
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   // Load data when modal opens
   useEffect(() => {
     if (isOpen && subjectId) {
       loadData();
     }
-  }, [isOpen, subjectId]);
-
-  const loadData = async () => {
+  }, [isOpen, subjectId]);  const loadData = async () => {
     setLoading(true);
     setError(null);
     
     try {
-      const [lessonSetsData, lessonsData] = await Promise.all([
-        LessonFirestoreService.getLessonSetsBySubject(subjectId),
-        LessonFirestoreService.getLessonsBySubject(subjectId)
-      ]);
-      
-      setLessonSets(lessonSetsData.map(lessonSetDocumentToDisplay));
+      const lessonsData = await LessonFirestoreService.getLessonsBySubject(subjectId);
       setLessons(lessonsData.map(lessonDocumentToDisplay));
     } catch (err) {
       console.error('Error loading lesson data:', err);
@@ -73,64 +216,47 @@ export default function LessonManagementModal({
     }
   };
 
-  // Lesson Set handlers
-  const handleCreateLessonSet = async (lessonSetData: LessonSetData) => {
-    setActionLoading('create-set');
-    try {
-      await LessonFirestoreService.createLessonSet(lessonSetData);
-      setLessonSetModalOpen(false);
-      setSelectedLessonSet(null);
-      setEditMode(false);
-      await loadData();
-    } catch (error) {
-      console.error('Error creating lesson set:', error);
-      throw error;
-    } finally {
-      setActionLoading(null);
+  // Handle drag end for reordering lessons
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = lessons.findIndex((lesson) => lesson.id === active.id);
+      const newIndex = lessons.findIndex((lesson) => lesson.id === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newLessons = arrayMove(lessons, oldIndex, newIndex);
+        
+        // Update the order property for each lesson based on new position
+        const updatedLessons = newLessons.map((lesson, index) => ({
+          ...lesson,
+          order: index + 1,
+        }));
+
+        // Optimistically update the UI
+        setLessons(updatedLessons);
+
+        // Update the order in the database
+        try {
+          setActionLoading('reordering');
+          
+          // Update all lessons with their new order
+          const updatePromises = updatedLessons.map(lesson =>
+            LessonFirestoreService.updateLesson(lesson.id, { order: lesson.order })
+          );
+          
+          await Promise.all(updatePromises);
+        } catch (error) {
+          console.error('Error updating lesson order:', error);
+          setError('Failed to update lesson order. Please try again.');
+          // Revert to original order on error
+          await loadData();
+        } finally {
+          setActionLoading(null);
+        }
+      }
     }
   };
-
-  const handleUpdateLessonSet = async (lessonSetData: LessonSetData) => {
-    if (!selectedLessonSet) return;
-    
-    setActionLoading('update-set');
-    try {
-      await LessonFirestoreService.updateLessonSet(selectedLessonSet.id, lessonSetData);
-      setLessonSetModalOpen(false);
-      setSelectedLessonSet(null);
-      setEditMode(false);
-      await loadData();
-    } catch (error) {
-      console.error('Error updating lesson set:', error);
-      throw error;
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleEditLessonSet = (lessonSet: LessonSetDisplayData) => {
-    setSelectedLessonSet(lessonSet);
-    setEditMode(true);
-    setLessonSetModalOpen(true);
-  };
-
-  const handleDeleteLessonSet = async () => {
-    if (!itemToDelete || deleteType !== 'lessonSet') return;
-    
-    setActionLoading('delete');
-    try {
-      await LessonFirestoreService.deleteLessonSet(itemToDelete.id);
-      setShowDeleteConfirm(false);
-      setItemToDelete(null);
-      await loadData();
-    } catch (error) {
-      console.error('Error deleting lesson set:', error);
-      setError(error instanceof Error ? error.message : 'Failed to delete lesson set');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
   // Lesson handlers
   const handleCreateLesson = async (lessonData: LessonData) => {
     setActionLoading('create-lesson');
@@ -171,9 +297,8 @@ export default function LessonManagementModal({
     setEditMode(true);
     setLessonModalOpen(true);
   };
-
   const handleDeleteLesson = async () => {
-    if (!itemToDelete || deleteType !== 'lesson') return;
+    if (!itemToDelete) return;
     
     setActionLoading('delete');
     try {
@@ -189,9 +314,8 @@ export default function LessonManagementModal({
     }
   };
 
-  const confirmDelete = (item: LessonSetDisplayData | LessonDisplayData, type: 'lessonSet' | 'lesson') => {
+  const confirmDelete = (item: LessonDisplayData) => {
     setItemToDelete(item);
-    setDeleteType(type);
     setShowDeleteConfirm(true);
   };
 
@@ -241,94 +365,21 @@ export default function LessonManagementModal({
                   Retry
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-8">
-                {/* Lesson Sets Section */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                      <Users className="w-5 h-5 mr-2" />
-                      Lesson Sets ({lessonSets.length})
-                    </h3>
-                    <Button
-                      onClick={() => {
-                        setSelectedLessonSet(null);
-                        setEditMode(false);
-                        setLessonSetModalOpen(true);
-                      }}
-                      size="sm"
-                      className="flex items-center space-x-2"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Add Lesson Set</span>
-                    </Button>
-                  </div>
-
-                  {lessonSets.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <Users className="mx-auto h-12 w-12 text-gray-400" />
-                      <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No lesson sets</h3>
-                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Get started by creating your first lesson set
-                      </p>
+            ) : (              <div className="space-y-8">
+                {/* Lessons Section */}
+                <div>                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                        <BookOpen className="w-5 h-5 mr-2" />
+                        Lessons ({lessons.length})
+                      </h3>
+                      {lessons.length > 1 && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center">
+                          <GripVertical className="w-3 h-3 mr-1" />
+                          Drag and drop to reorder lessons
+                        </p>
+                      )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {lessonSets.map((lessonSet) => (
-                        <div key={lessonSet.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <h4 className="font-medium text-gray-900 dark:text-white">
-                                {lessonSet.name}
-                              </h4>
-                              {lessonSet.description && (
-                                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                                  {lessonSet.description}
-                                </p>
-                              )}
-                              <div className="flex items-center justify-between mt-2">
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  Order: {lessonSet.order}
-                                </span>
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  lessonSet.isActive 
-                                    ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300'
-                                    : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300'
-                                }`}>
-                                  {lessonSet.isActive ? 'Active' : 'Inactive'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex space-x-1 ml-2">
-                              <button
-                                onClick={() => handleEditLessonSet(lessonSet)}
-                                disabled={actionLoading === 'update-set'}
-                                className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => confirmDelete(lessonSet, 'lessonSet')}
-                                disabled={actionLoading === 'delete'}
-                                className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Individual Lessons Section */}
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                      <BookOpen className="w-5 h-5 mr-2" />
-                      Individual Lessons ({lessons.length})
-                    </h3>
                     <Button
                       onClick={() => {
                         setSelectedLesson(null);
@@ -341,9 +392,7 @@ export default function LessonManagementModal({
                       <Plus className="w-4 h-4" />
                       <span>Add Lesson</span>
                     </Button>
-                  </div>
-
-                  {lessons.length === 0 ? (
+                  </div>{lessons.length === 0 ? (
                     <div className="text-center py-8 bg-gray-50 dark:bg-gray-700 rounded-lg">
                       <BookOpen className="mx-auto h-12 w-12 text-gray-400" />
                       <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No lessons</h3>
@@ -352,124 +401,42 @@ export default function LessonManagementModal({
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {lessons.map((lesson) => (
-                        <div key={lesson.id} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <h4 className="font-medium text-gray-900 dark:text-white">
-                                    {lesson.name}
-                                  </h4>
-                                  {lesson.description && (
-                                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                                      {lesson.description}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="flex space-x-1 ml-4">
-                                  <button
-                                    onClick={() => handleEditLesson(lesson)}
-                                    disabled={actionLoading === 'update-lesson'}
-                                    className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                                  >
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => confirmDelete(lesson, 'lesson')}
-                                    disabled={actionLoading === 'delete'}
-                                    className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center space-x-4 mt-3 text-sm text-gray-600 dark:text-gray-300">
-                                <span className="flex items-center">
-                                  Order: {lesson.order}
-                                </span>
-                                {lesson.duration && (
-                                  <span className="flex items-center">
-                                    <Clock className="w-4 h-4 mr-1" />
-                                    {lesson.formattedDuration}
-                                  </span>
-                                )}
-                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                  lesson.isActive 
-                                    ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300'
-                                    : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300'
-                                }`}>
-                                  {lesson.isActive ? 'Active' : 'Inactive'}
-                                </span>
-                              </div>
-
-                              {/* Show additional lesson details */}
-                              <div className="mt-3 space-y-2">
-                                {lesson.objectives && lesson.objectives.length > 0 && (
-                                  <div className="flex items-start text-sm">
-                                    <Target className="w-4 h-4 mr-2 mt-0.5 text-blue-500" />
-                                    <div>
-                                      <span className="font-medium">Objectives:</span>
-                                      <ul className="list-disc list-inside ml-2 text-gray-600 dark:text-gray-300">
-                                        {lesson.objectives.slice(0, 2).map((objective, index) => (
-                                          <li key={index}>{objective}</li>
-                                        ))}
-                                        {lesson.objectives.length > 2 && (
-                                          <li>... and {lesson.objectives.length - 2} more</li>
-                                        )}
-                                      </ul>
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                {lesson.materials && lesson.materials.length > 0 && (
-                                  <div className="flex items-start text-sm">
-                                    <Package className="w-4 h-4 mr-2 mt-0.5 text-green-500" />
-                                    <div>
-                                      <span className="font-medium">Materials:</span>
-                                      <span className="ml-2 text-gray-600 dark:text-gray-300">
-                                        {lesson.materials.slice(0, 3).join(', ')}
-                                        {lesson.materials.length > 3 && ` and ${lesson.materials.length - 3} more`}
-                                      </span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handleDragEnd}
+                    >
+                      <SortableContext
+                        items={lessons.map(lesson => lesson.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-4">
+                          {actionLoading === 'reordering' && (
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                              <p className="text-blue-800 dark:text-blue-200 text-sm">
+                                Updating lesson order...
+                              </p>
                             </div>
-                          </div>
+                          )}
+                          {lessons.map((lesson) => (
+                            <SortableLesson
+                              key={lesson.id}
+                              lesson={lesson}
+                              onEdit={handleEditLesson}
+                              onDelete={confirmDelete}
+                              actionLoading={actionLoading}
+                            />
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </SortableContext>
+                    </DndContext>
                   )}
                 </div>
               </div>
             )}
           </div>
         </div>
-      </div>
-
-      {/* Lesson Set Modal */}
-      {lessonSetModalOpen && (
-        <LessonSetModal
-          isOpen={lessonSetModalOpen}
-          onClose={() => {
-            setLessonSetModalOpen(false);
-            setSelectedLessonSet(null);
-            setEditMode(false);
-          }}
-          onSubmit={editMode ? handleUpdateLessonSet : handleCreateLessonSet}
-          loading={actionLoading === 'create-set' || actionLoading === 'update-set'}
-          title={editMode ? 'Edit Lesson Set' : 'Add Lesson Set'}
-          submitButtonText={editMode ? 'Update Lesson Set' : 'Add Lesson Set'}
-          initialData={editMode ? selectedLessonSet || undefined : undefined}
-          subjectId={subjectId}
-          subjectName={subjectName}
-        />
-      )}
-
-      {/* Lesson Modal */}
+      </div>      {/* Lesson Modal */}
       {lessonModalOpen && (
         <LessonModal
           isOpen={lessonModalOpen}
@@ -496,9 +463,9 @@ export default function LessonManagementModal({
             setShowDeleteConfirm(false);
             setItemToDelete(null);
           }}
-          onConfirm={deleteType === 'lessonSet' ? handleDeleteLessonSet : handleDeleteLesson}
+          onConfirm={handleDeleteLesson}
           isLoading={actionLoading === 'delete'}
-          title={`Delete ${deleteType === 'lessonSet' ? 'Lesson Set' : 'Lesson'}`}
+          title="Delete Lesson"
           description={`Are you sure you want to delete "${itemToDelete.name}"? This action cannot be undone.`}
           confirmText="Delete"
           cancelText="Cancel"

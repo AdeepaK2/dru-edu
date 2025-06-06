@@ -3,17 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Plus, Check } from 'lucide-react';
 import { QuestionBank, Question } from '@/models/questionBankSchema';
+import { questionBankService, questionService } from '@/apiservices/questionBankFirestoreService';
 import { Button } from '@/components/ui';
 import QuestionForm from '@/components/questions/QuestionForm';
-
-// Mock timestamp for Firebase Timestamp
-const mockTimestamp = {
-  seconds: Math.floor(Date.now() / 1000),
-  nanoseconds: 0,
-  toDate: () => new Date()
-};
 
 interface AddQuestionsPageProps {
   params: {
@@ -33,109 +27,36 @@ export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
-  // Load question bank and existing questions
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);  // Load question bank and existing questions
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    
-    // Simulate API delay
-    const timer = setTimeout(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      
       try {
-        // In a real app, fetch from Firestore
-        // const bank = await questionBankService.getQuestionBank(bankId);
-        // if (!bank) throw new Error('Question bank not found');
+        // Fetch question bank
+        const bank = await questionBankService.getQuestionBank(bankId);
+        if (!bank) {
+          throw new Error('Question bank not found');
+        }
         
-        // Mock bank data
-        const mockBank: QuestionBank = {
-          id: bankId,
-          name: 'Algebra Basics',
-          description: 'Fundamental concepts of algebra for 6th grade',
-          subjectId: 'math-g6',
-          subjectName: 'Mathematics',
-          grade: 'Grade 6',
-          questionIds: ['q1', 'q2', 'q3'],
-          totalQuestions: 3,
-          mcqCount: 2,
-          essayCount: 1,
-          createdAt: mockTimestamp as any,
-          updatedAt: mockTimestamp as any
-        };
+        setQuestionBank(bank);
         
-        // Mock existing questions not in this bank
-        const mockQuestions: Question[] = [
-          {
-            id: 'q4',
-            title: 'Solving Multi-Step Equations',
-            content: 'Solve for x: 3(x + 2) = 18',
-            imageUrl: '',
-            type: 'mcq',
-            topic: 'Algebra',
-            subtopic: 'Linear Equations',
-            difficultyLevel: 'hard',
-            points: 15,
-            options: [
-              { id: '1', text: 'x = 4', isCorrect: true },
-              { id: '2', text: 'x = 5', isCorrect: false },
-              { id: '3', text: 'x = 6', isCorrect: false },
-              { id: '4', text: 'x = 3', isCorrect: false }
-            ],
-            correctAnswer: 'A',
-            explanation: 'First, distribute the 3: 3x + 6 = 18. Then subtract 6 from both sides: 3x = 12. Finally, divide by 3: x = 4.',
-            createdAt: mockTimestamp as any,
-            updatedAt: mockTimestamp as any
-          },
-          {
-            id: 'q5',
-            title: 'Algebraic Expressions',
-            content: 'Which of the following is equivalent to 3(2x + 4)?',
-            imageUrl: '',
-            type: 'mcq',
-            topic: 'Algebra',
-            subtopic: 'Expressions',
-            difficultyLevel: 'medium',
-            points: 10,
-            options: [
-              { id: '1', text: '6x + 12', isCorrect: true },
-              { id: '2', text: '5x + 4', isCorrect: false },
-              { id: '3', text: '6x + 4', isCorrect: false },
-              { id: '4', text: '3x + 12', isCorrect: false }
-            ],
-            correctAnswer: 'A',
-            explanation: 'To distribute the 3, multiply it by each term inside the parentheses: 3(2x + 4) = 3*2x + 3*4 = 6x + 12.',
-            createdAt: mockTimestamp as any,
-            updatedAt: mockTimestamp as any
-          },
-          {
-            id: 'q6',
-            title: 'Writing About the Importance of Algebra',
-            content: 'Write an essay discussing why algebra is important in everyday life and provide at least three real-world examples.',
-            imageUrl: '',
-            type: 'essay',
-            topic: 'Algebra',
-            subtopic: 'Applications',
-            difficultyLevel: 'medium',
-            points: 25,
-            suggestedAnswerContent: 'A good essay would discuss how algebra helps with budgeting, taxes, analyzing data, understanding growth and decay rates, etc. Examples might include calculating interest on loans, determining the best cell phone plan, or figuring out how long a project will take.',
-            wordLimit: 600,
-            minWordCount: 300,
-            createdAt: mockTimestamp as any,
-            updatedAt: mockTimestamp as any
-          }
-        ];
+        // Fetch existing questions not in this bank
+        // Get all questions and filter out those already in this bank
+        const allQuestions = await questionService.listQuestions();
+        const questionsNotInBank = allQuestions.filter((q: Question) => !bank.questionIds.includes(q.id));
         
-        setQuestionBank(mockBank);
-        setExistingQuestions(mockQuestions);
+        setExistingQuestions(questionsNotInBank);
         setLoading(false);
       } catch (err: any) {
         console.error("Error loading data:", err);
         setError(`Error: ${err.message || 'Failed to load data'}`);
         setLoading(false);
       }
-    }, 800);
+    };
     
-    return () => clearTimeout(timer);
+    loadData();
   }, [bankId]);
 
   // Handle tab change
@@ -158,22 +79,22 @@ export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
       setSelectedQuestionIds(prev => prev.filter(id => id !== questionId));
     }
   };
-
   // Handle creation of a new question
   const handleCreateQuestion = async (questionData: Omit<Question, 'id' | 'createdAt' | 'updatedAt'>) => {
     setSubmitting(true);
     setError(null);
     
     try {
-      // In a real app, submit to API
-      // const newQuestionId = await questionService.createQuestion(questionData);
-      // await questionBankService.addQuestionsToBank(bankId, [newQuestionId]);
+      // Create the question in Firebase
+      const newQuestionId = await questionService.createQuestion(questionData);
       
-      // Mock success
+      // Add the question to the question bank
+      await questionBankService.addQuestionsToBank(bankId, [newQuestionId]);
+      
       setSuccessMessage('Question created and added to the bank successfully!');
       setTimeout(() => {
         setSuccessMessage(null);
-        // Optionally redirect back to bank details
+        // Redirect back to bank details
         router.push(`/admin/question-banks/${bankId}`);
       }, 2000);
     } catch (err: any) {
@@ -183,7 +104,6 @@ export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
       setSubmitting(false);
     }
   };
-
   // Handle adding existing questions to the bank
   const handleAddExistingQuestions = async () => {
     if (selectedQuestionIds.length === 0) {
@@ -195,14 +115,13 @@ export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
     setError(null);
     
     try {
-      // In a real app, submit to API
-      // await questionBankService.addQuestionsToBank(bankId, selectedQuestionIds);
+      // Add questions to the bank in Firebase
+      await questionBankService.addQuestionsToBank(bankId, selectedQuestionIds);
       
-      // Mock success
       setSuccessMessage(`Added ${selectedQuestionIds.length} questions to the bank successfully!`);
       setTimeout(() => {
         setSuccessMessage(null);
-        // Optionally redirect back to bank details
+        // Redirect back to bank details
         router.push(`/admin/question-banks/${bankId}`);
       }, 2000);
     } catch (err: any) {
@@ -338,13 +257,16 @@ export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
               </div>
             </div>
             
-            <div className="p-6">
-              <QuestionForm
+            <div className="p-6">              <QuestionForm
                 questionType={questionType}
                 onSubmit={handleCreateQuestion}
                 subjectId={questionBank.subjectId}
                 subjectName={questionBank.subjectName}
                 loading={submitting}
+                currentQuestionCounts={{
+                  mcqCount: questionBank.mcqCount || 0,
+                  essayCount: questionBank.essayCount || 0
+                }}
               />
             </div>
           </div>
