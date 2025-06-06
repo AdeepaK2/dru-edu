@@ -30,12 +30,9 @@ type QuestionFormData = {
   correctAnswer?: string;
   explanation: string;
   explanationImageUrl?: string;
-  marks?: number; // Optional marks field
-  // Essay specific
+  marks?: number; // Optional marks field  // Essay specific
   suggestedAnswerContent: string;
   suggestedAnswerImageUrl?: string;
-  wordLimit: number;
-  minWordCount: number;
 };
 
 const initialFormData: QuestionFormData = {
@@ -54,13 +51,10 @@ const initialFormData: QuestionFormData = {
   ],
   correctAnswer: '',
   explanation: '',
-  explanationImageUrl: '',
-  marks: undefined,
+  explanationImageUrl: '',  marks: undefined,
   // Essay fields
   suggestedAnswerContent: '',
-  suggestedAnswerImageUrl: '',
-  wordLimit: 500,
-  minWordCount: 50
+  suggestedAnswerImageUrl: ''
 };
 
 const difficultyOptions = [
@@ -191,11 +185,9 @@ export default function QuestionForm({
     }));
   };
   const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-
-    // Basic validation
-    if (!formData.content.trim()) {
-      newErrors.content = 'Question content is required';
+    const newErrors: Record<string, string> = {};    // Basic validation - content is required only if no image is provided
+    if (!formData.content.trim() && !formData.imageUrl?.trim()) {
+      newErrors.content = 'Either question content or image is required';
     }
 
     if (formData.points < 1) {
@@ -221,24 +213,11 @@ export default function QuestionForm({
       if (!formData.explanation.trim()) {
         newErrors.explanation = 'Explanation is required for MCQ questions';
       }
-    }
-
-    // Essay specific validation
+    }    // Essay specific validation
     if (questionType === 'essay') {
-      if (!formData.suggestedAnswerContent.trim()) {
-        newErrors.suggestedAnswerContent = 'Suggested answer is required for essay questions';
-      }
-
-      if (formData.wordLimit < 1) {
-        newErrors.wordLimit = 'Word limit must be at least 1';
-      }
-
-      if (formData.minWordCount < 1) {
-        newErrors.minWordCount = 'Minimum word count must be at least 1';
-      }
-
-      if (formData.minWordCount > formData.wordLimit) {
-        newErrors.minWordCount = 'Minimum word count cannot exceed word limit';
+      // Require either suggested answer content OR suggested answer image
+      if (!formData.suggestedAnswerContent.trim() && !formData.suggestedAnswerImageUrl?.trim()) {
+        newErrors.suggestedAnswerContent = 'Either suggested answer text or image is required';
       }
     }
 
@@ -252,11 +231,10 @@ export default function QuestionForm({
       return;
     }
 
-    try {
-      // Prepare question data based on type
+    try {      // Prepare question data based on type
       const baseQuestionData = {
         title: formData.qno, // Use qno as title
-        content: formData.content.trim(),
+        content: formData.content.trim() || undefined, // Make content optional if empty
         imageUrl: formData.imageUrl?.trim() || undefined,
         type: questionType,
         topic: formData.lessonId !== 'no-lesson' ? lessons.find(l => l.id === formData.lessonId)?.name : undefined,
@@ -280,15 +258,12 @@ export default function QuestionForm({
         // Add marks if specified
         if (formData.marks) {
           (questionData as any).marks = formData.marks;
-        }
-      } else {
+        }      } else {
         questionData = {
           ...baseQuestionData,
           type: 'essay',
-          suggestedAnswerContent: formData.suggestedAnswerContent.trim(),
-          suggestedAnswerImageUrl: formData.suggestedAnswerImageUrl?.trim() || undefined,
-          wordLimit: formData.wordLimit,
-          minWordCount: formData.minWordCount
+          suggestedAnswerContent: formData.suggestedAnswerContent.trim() || undefined,
+          suggestedAnswerImageUrl: formData.suggestedAnswerImageUrl?.trim() || undefined
         } as Omit<EssayQuestion, 'id' | 'createdAt' | 'updatedAt'>;
       }
 
@@ -363,22 +338,24 @@ export default function QuestionForm({
           {loadingLessons && (
             <p className="text-sm text-gray-500 mt-1">Loading lessons...</p>
           )}
-        </div>
-
-        <div className="lg:col-span-2">
+        </div>        <div className="lg:col-span-2">
           <TextArea
             label="Question Content"
             value={formData.content}
             onChange={(e) => handleInputChange('content', e.target.value)}
-            placeholder="Enter the full question text"
+            placeholder="Enter the full question text (optional if image is provided)"
             rows={4}
             error={errors.content}
-            required
+            required={false}
             disabled={loading}
           />
-        </div>
-
-        <div className="lg:col-span-2">
+          <p className="text-sm text-gray-500 mt-1">
+            {formData.imageUrl ? 
+              'Content is optional when an image is provided' : 
+              'Either question content or image is required'
+            }
+          </p>
+        </div>        <div className="lg:col-span-2">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Question Image (Optional)
           </label>
@@ -416,6 +393,12 @@ export default function QuestionForm({
                 </Button>
               )}
             </div>
+            <p className="text-sm text-gray-500">
+              {formData.content.trim() ? 
+                'Image can supplement the question text' : 
+                'Either question content or image is required'
+              }
+            </p>
             {formData.imageUrl && (
               <div className="relative">
                 <img
@@ -600,62 +583,113 @@ export default function QuestionForm({
             </div>
           </div>
         </div>
-      )}
-
-      {/* Essay Specific Fields */}
+      )}      {/* Essay Specific Fields */}
       {questionType === 'essay' && (
         <div className="space-y-6">
           <div>
             <TextArea
-              label="Suggested Answer"
+              label="Suggested Answer (Optional)"
               value={formData.suggestedAnswerContent}
               onChange={(e) => handleInputChange('suggestedAnswerContent', e.target.value)}
               placeholder="Provide a comprehensive suggested answer for grading reference"
               rows={6}
               error={errors.suggestedAnswerContent}
-              required
+              required={false}
               disabled={loading}
+              helperText={
+                !formData.suggestedAnswerContent.trim() && !formData.suggestedAnswerImageUrl?.trim()
+                  ? "Either suggested answer text or image must be provided"
+                  : formData.suggestedAnswerImageUrl?.trim()
+                  ? "You have provided an answer image. Text answer is optional."
+                  : "Provide a comprehensive suggested answer for grading reference"
+              }
             />
           </div>
 
-          <div>
-            <Input
-              label="Suggested Answer Image URL (Optional)"
-              value={formData.suggestedAnswerImageUrl || ''}
-              onChange={(e) => handleInputChange('suggestedAnswerImageUrl', e.target.value)}
-              placeholder="https://example.com/suggested-answer-image.jpg"
-              disabled={loading}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Input
-                label="Word Limit"
-                type="number"
-                min="1"
-                value={formData.wordLimit}
-                onChange={(e) => handleInputChange('wordLimit', parseInt(e.target.value) || 0)}
-                placeholder="500"
-                error={errors.wordLimit}
-                required
-                disabled={loading}
-              />
+          {/* Suggested Answer Image Upload Section */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">
+                Suggested Answer Image (Optional)
+              </label>
+              {!formData.suggestedAnswerContent.trim() && !formData.suggestedAnswerImageUrl?.trim() && (
+                <span className="text-xs text-red-600">Either text or image required</span>
+              )}
             </div>
-
-            <div>
+            
+            <div className="flex items-center space-x-4">
               <Input
-                label="Minimum Word Count"
-                type="number"
-                min="1"
-                value={formData.minWordCount}
-                onChange={(e) => handleInputChange('minWordCount', parseInt(e.target.value) || 0)}
-                placeholder="50"
-                error={errors.minWordCount}
-                required
+                value={formData.suggestedAnswerImageUrl || ''}
+                onChange={(e) => handleInputChange('suggestedAnswerImageUrl', e.target.value)}
+                placeholder="https://example.com/suggested-answer-image.jpg"
                 disabled={loading}
+                className="flex-1"
               />
+              
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const file = await new Promise<File | null>((resolve) => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'image/*';
+                    input.onchange = (e) => {
+                      const target = e.target as HTMLInputElement;
+                      resolve(target.files?.[0] || null);
+                    };
+                    input.click();
+                  });
+                  
+                  if (file) {
+                    try {                      const result = await uploadImage(file, { type: 'explanation' });
+                      if (result.imageUrl) {
+                        handleInputChange('suggestedAnswerImageUrl', result.imageUrl);
+                      }
+                    } catch (error) {
+                      console.error('Error uploading image:', error);
+                    }
+                  }
+                }}
+                disabled={loading || imageUploading}
+                className="whitespace-nowrap"
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                {imageUploading ? 'Uploading...' : 'Upload'}
+              </Button>
+
+              {formData.suggestedAnswerImageUrl && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFormData(prev => ({ ...prev, suggestedAnswerImageUrl: '' }))}
+                  disabled={loading}
+                  className="text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Remove
+                </Button>
+              )}
             </div>
+            
+            {formData.suggestedAnswerImageUrl && (
+              <div className="relative">
+                <img
+                  src={formData.suggestedAnswerImageUrl}
+                  alt="Suggested Answer"
+                  className="max-w-md max-h-48 object-contain border rounded-lg"
+                />
+              </div>
+            )}
+            
+            {!formData.suggestedAnswerContent.trim() && formData.suggestedAnswerImageUrl?.trim() && (
+              <p className="text-sm text-blue-600">
+                <ImageIcon className="w-4 h-4 inline mr-1" />
+                Answer image provided. Text answer is optional.
+              </p>
+            )}
           </div>
         </div>
       )}

@@ -3,12 +3,14 @@ import React from 'react';
 interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
+  helperText?: string;
   className?: string;
 }
 
 const TextArea: React.FC<TextAreaProps> = ({ 
   label, 
   error, 
+  helperText,
   className = '', 
   id,
   ...props 
@@ -37,8 +39,12 @@ const TextArea: React.FC<TextAreaProps> = ({
           ${error ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}
           ${className}
         `}
-        {...props}
-      />
+        {...props}      />
+      {helperText && !error && (
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {helperText}
+        </p>
+      )}
       {error && (
         <p className="mt-1 text-sm text-red-600 dark:text-red-400">
           {error}

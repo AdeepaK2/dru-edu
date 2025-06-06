@@ -15,8 +15,8 @@ export interface QuestionOption {
 export interface BaseQuestion {
   id: string;
   title: string;
-  // Text content of question (can be empty if using image)
-  content: string;
+  // Text content of question (optional if using image)
+  content?: string;
   // URL to question image file
   imageUrl?: string;
   type: 'mcq' | 'essay';
@@ -47,13 +47,10 @@ export interface MCQQuestion extends BaseQuestion {
 // Essay question
 export interface EssayQuestion extends BaseQuestion {
   type: 'essay';
-  // Suggested answer content
-  suggestedAnswerContent: string;
+  // Suggested answer content (optional if using image)
+  suggestedAnswerContent?: string;
   // Suggested answer as image
   suggestedAnswerImageUrl?: string;
-  // Word count requirements
-  wordLimit: number;
-  minWordCount: number;
 }
 
 // Union type for all question types

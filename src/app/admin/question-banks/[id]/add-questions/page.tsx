@@ -354,11 +354,10 @@ export default function AddQuestionsPage({ params }: AddQuestionsPageProps) {
                               </p>
                             </div>
                           )}
-                          
-                          {question.type === 'essay' && (
+                            {question.type === 'essay' && (
                             <div className="mt-2 pl-4 border-l-2 border-gray-200">
                               <p className="text-sm text-gray-600">
-                                Word count: {question.minWordCount}-{question.wordLimit}
+                                Essay Question
                               </p>
                             </div>
                           )}

@@ -474,8 +474,7 @@ export default function QuestionsPage() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {questions.filter(q => q.type === 'mcq').map((question) => {
+                      <tbody className="bg-white divide-y divide-gray-200">                        {questions.filter(q => q.type === 'mcq').map((question) => {
                           const mcqQuestion = question as MCQQuestion;
                           const correctOption = mcqQuestion.options.find(opt => opt.isCorrect);
                           
@@ -483,7 +482,9 @@ export default function QuestionsPage() {
                             <tr key={question.id} className="hover:bg-gray-50">
                               <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                 <div className="max-w-xs truncate">{question.title}</div>
-                                <div className="text-xs text-gray-500 mt-1 truncate">{question.content.substring(0, 50)}...</div>
+                                <div className="text-xs text-gray-500 mt-1 truncate">
+                                  {question.content ? question.content.substring(0, 50) + '...' : 'No content - Image only'}
+                                </div>
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-500">
                                 {question.topic || <span className="text-gray-400">Not specified</span>}
@@ -550,8 +551,7 @@ export default function QuestionsPage() {
                   <div>
                     <div className="bg-purple-50 px-6 py-3 border-b border-purple-200">
                       <h3 className="text-lg font-medium text-purple-800">Essay Questions</h3>
-                    </div>
-                    <table className="min-w-full divide-y divide-gray-200">
+                    </div>                    <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -564,9 +564,6 @@ export default function QuestionsPage() {
                             Difficulty
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Word Requirements
-                          </th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Points
                           </th>
                           <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -574,20 +571,20 @@ export default function QuestionsPage() {
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {questions.filter(q => q.type === 'essay').map((question) => {
+                      <tbody className="bg-white divide-y divide-gray-200">                        {questions.filter(q => q.type === 'essay').map((question) => {
                           const essayQuestion = question as EssayQuestion;
                           
                           return (
                             <tr key={question.id} className="hover:bg-gray-50">
                               <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                 <div className="max-w-xs truncate">{question.title}</div>
-                                <div className="text-xs text-gray-500 mt-1 truncate">{question.content.substring(0, 50)}...</div>
+                                <div className="text-xs text-gray-500 mt-1 truncate">
+                                  {question.content ? question.content.substring(0, 50) + '...' : 'No content - Image only'}
+                                </div>
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-500">
                                 {question.topic || <span className="text-gray-400">Not specified</span>}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              </td>                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                                   question.difficultyLevel === 'easy' ? 'bg-green-100 text-green-800' :
                                   question.difficultyLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
@@ -595,11 +592,6 @@ export default function QuestionsPage() {
                                 }`}>
                                   {question.difficultyLevel.charAt(0).toUpperCase() + question.difficultyLevel.slice(1)}
                                 </span>
-                              </td>
-                              <td className="px-6 py-4 text-sm text-gray-500">
-                                <span>Min: {essayQuestion.minWordCount} words</span>
-                                <br />
-                                <span>Max: {essayQuestion.wordLimit} words</span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                 {question.points}

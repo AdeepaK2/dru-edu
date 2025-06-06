@@ -351,21 +351,25 @@ export default function QuestionBankDetailModal({
                       )}
                     </div>
                   )}
-                  
-                  {/* Essay Details */}
+                    {/* Essay Details */}
                   {question.type === 'essay' && (
                     <div className="mt-4 space-y-4">
-                      <div className="flex justify-between items-center px-4 py-2 bg-white rounded-md border">
-                        <div>
-                          <span className="text-sm text-gray-500">Word Requirements:</span>
-                          <span className="ml-2 font-medium">Min: {question.minWordCount}, Max: {question.wordLimit}</span>
-                        </div>
-                      </div>
-                      
-                      {question.suggestedAnswerContent && (
+                      {/* Display suggested answer if available */}
+                      {(question.suggestedAnswerContent || question.suggestedAnswerImageUrl) && (
                         <div className="bg-gray-100 p-4 rounded-md">
                           <h4 className="text-sm font-medium text-gray-700">Suggested Answer:</h4>
-                          <p className="text-gray-600 mt-1">{question.suggestedAnswerContent}</p>
+                          {question.suggestedAnswerContent && (
+                            <p className="text-gray-600 mt-1">{question.suggestedAnswerContent}</p>
+                          )}
+                          {question.suggestedAnswerImageUrl && (
+                            <div className="mt-2">
+                              <img
+                                src={question.suggestedAnswerImageUrl}
+                                alt="Suggested Answer"
+                                className="max-w-md max-h-48 object-contain border rounded-lg"
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
