@@ -42,8 +42,7 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       // Set custom claims
       firebaseAdmin.authentication.setCustomClaims(userRecord.uid, { admin: true }),
-      
-      // Store admin data in Firestore
+        // Store admin data in Firestore
       firebaseAdmin.firestore.setDoc('admins', userRecord.uid, {
         name,
         email,
@@ -230,7 +229,7 @@ export async function PATCH(req: NextRequest) {
     
     // Update in Firestore
     const firestoreUpdateData: Partial<Omit<AdminDocument, 'id'>> = {
-      updatedAt: Timestamp.now()
+      updatedAt: admin.firestore.Timestamp.now() as any
     };
     
     if (name) firestoreUpdateData.name = name;

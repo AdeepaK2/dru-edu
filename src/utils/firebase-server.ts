@@ -4,10 +4,13 @@ import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { getAuth, Auth } from 'firebase-admin/auth';
 import { getStorage, Storage } from 'firebase-admin/storage';
 import { getDatabase, Database } from 'firebase-admin/database';
-import { setDefaultTimezone, MELBOURNE_TIMEZONE } from './timezone';
+
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
 
 // Set default timezone to Melbourne
-setDefaultTimezone();
+if (typeof process !== 'undefined' && process.env) {
+  process.env.TZ = MELBOURNE_TIMEZONE;
+}
 
 // Initialize Firebase Admin if not already initialized
 function initializeFirebaseAdmin() {
