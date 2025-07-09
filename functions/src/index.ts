@@ -5,7 +5,7 @@
 
 import {onRequest} from "firebase-functions/v2/https";
 import {onDocumentWritten} from "firebase-functions/v2/firestore";
-import * as logger from "firebase-functions/logger";
+import {logger} from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import {Timestamp} from "firebase-admin/firestore";
 

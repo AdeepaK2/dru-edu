@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       // Set custom claims
       firebaseAdmin.authentication.setCustomClaims(userRecord.uid, { admin: true }),
-        // Store admin data in Firestore
+      // Store admin data in Firestore
       firebaseAdmin.firestore.setDoc('admins', userRecord.uid, {
         name,
         email,
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
     if (adminIds.length > 0) {
       try {
         // Firebase Auth has getUsers() for batch operations
-        const result = await firebaseAdmin.auth.getUsers(adminIds.map(id => ({ uid: id })));
+        const result = await firebaseAdmin.authentication.getUsers(adminIds.map(id => ({ uid: id })));
         result.users.forEach(user => {
           authUsers[user.uid] = user;
         });

@@ -222,7 +222,8 @@ export async function GET(req: NextRequest) {
       } catch (error) {
         console.warn(`Auth user not found for student ${id}`);
       }
-        const student = {
+      
+      const student = {
         ...studentDoc,
         id,
         emailVerified: authUser?.emailVerified || false,
