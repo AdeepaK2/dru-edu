@@ -8,7 +8,8 @@ import { cacheUtils } from '@/utils/cache';
 async function generateSubjectId(): Promise<string> {
   const currentYear = new Date().getFullYear();
   const yearPrefix = `SUB-${currentYear}-`;
-    // Get all subjects with the current year prefix
+  
+  // Get all subjects with the current year prefix
   const snapshot = await firebaseAdmin.db
     .collection('subjects')
     .where('subjectId', '>=', yearPrefix)
@@ -55,13 +56,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const subjectData = validationResult.data;    // Generate auto-incrementing subject ID
+    const subjectData = validationResult.data;
+    
+    // Generate auto-incrementing subject ID
     const subjectId = await generateSubjectId();
     
     // Prepare the document to be saved
-    const now = Timestamp.now() as any;
-    const subjectDocument: Omit<SubjectDocument, 'id'> = {
-      ...subjectData,
+    const now = Timestamp.now();
+    const subjectDocument = {
+      name: subjectData.name,
+      grade: subjectData.grade,
+      description: subjectData.description || '',
+      isActive: subjectData.isActive,
       subjectId,
       createdAt: now,
       updatedAt: now,
@@ -77,10 +83,10 @@ export async function POST(req: NextRequest) {
     cacheUtils.invalidate('subjects');
 
     return NextResponse.json({
-      success: true, 
+      success: true,
       id: docRef.id,
       subjectId: subjectId,
-      message: 'Subject created successfully' 
+      message: 'Subject created successfully'
     });
 
   } catch (error) {
@@ -114,7 +120,9 @@ export async function GET(req: NextRequest) {
     
     if (isActive !== null) {
       query = query.where('isActive', '==', isActive === 'true');
-    }    const snapshot = await query.get();
+    }
+    
+    const snapshot = await query.get();
     const subjects: SubjectDocument[] = snapshot.docs.map((doc: any) => ({
       id: doc.id,
       ...doc.data()
@@ -122,9 +130,9 @@ export async function GET(req: NextRequest) {
 
     console.log(`Retrieved ${subjects.length} subjects`);
 
-    return NextResponse.json({ 
-      success: true, 
-      data: subjects 
+    return NextResponse.json({
+      success: true,
+      data: subjects
     });
 
   } catch (error) {
@@ -173,7 +181,9 @@ export async function PUT(req: NextRequest) {
         }, 
         { status: 400 }
       );
-    }    const validatedData = validationResult.data;
+    }
+    
+    const validatedData = validationResult.data;
 
     // Check if subject exists
     const subjectRef = firebaseAdmin.db.collection('subjects').doc(id);
@@ -184,19 +194,23 @@ export async function PUT(req: NextRequest) {
         { success: false, error: 'Subject not found' },
         { status: 404 }
       );
-    }    // Update the document
-    const now = Timestamp.now() as any;
+    }
+    
+    // Update the document
+    const now = Timestamp.now();
     await subjectRef.update({
       ...validatedData,
       updatedAt: now,
-    });    console.log('Subject updated successfully:', id);
+    });
+    
+    console.log('Subject updated successfully:', id);
 
     // Clear cache to ensure fresh data
     cacheUtils.invalidate('subjects');
 
     return NextResponse.json({
-      success: true, 
-      message: 'Subject updated successfully' 
+      success: true,
+      message: 'Subject updated successfully'
     });
 
   } catch (error) {
@@ -223,7 +237,9 @@ export async function DELETE(req: NextRequest) {
         { success: false, error: 'Subject ID is required' },
         { status: 400 }
       );
-    }    console.log('Deleting subject:', id);
+    }
+    
+    console.log('Deleting subject:', id);
 
     // Check if subject exists
     const subjectRef = firebaseAdmin.db.collection('subjects').doc(id);
@@ -243,14 +259,16 @@ export async function DELETE(req: NextRequest) {
     // - Check questions collection for references
 
     // Delete the document
-    await subjectRef.delete();    console.log('Subject deleted successfully:', id);
+    await subjectRef.delete();
+    
+    console.log('Subject deleted successfully:', id);
 
     // Clear cache to ensure fresh data
     cacheUtils.invalidate('subjects');
 
     return NextResponse.json({
-      success: true, 
-      message: 'Subject deleted successfully' 
+      success: true,
+      message: 'Subject deleted successfully'
     });
 
   } catch (error) {

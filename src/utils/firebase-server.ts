@@ -5,17 +5,30 @@ import { getAuth, Auth } from 'firebase-admin/auth';
 import { getStorage, Storage } from 'firebase-admin/storage';
 import { getDatabase, Database } from 'firebase-admin/database';
 
-const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
-
 // Set default timezone to Melbourne
-if (typeof process !== 'undefined' && process.env) {
-  process.env.TZ = MELBOURNE_TIMEZONE;
+if (typeof process !== 'undefined' && process.env && !process.env.TZ) {
+  process.env.TZ = 'Australia/Melbourne';
 }
 
 // Initialize Firebase Admin if not already initialized
 function initializeFirebaseAdmin() {
   if (getApps().length === 0) {
     try {
+      // Check for required environment variables
+      const requiredEnvVars = [
+        'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
+        'FIREBASE_ADMIN_PRIVATE_KEY_ID',
+        'FIREBASE_ADMIN_PRIVATE_KEY',
+        'FIREBASE_ADMIN_CLIENT_EMAIL',
+        'FIREBASE_ADMIN_CLIENT_ID'
+      ];
+
+      const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+      
+      if (missingVars.length > 0) {
+        throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+      }
+
       // Use environment variables instead of importing service account JSON
       const serviceAccount = {
         type: 'service_account',
@@ -124,6 +137,10 @@ const authentication = {
   
   async setCustomClaims(uid: string, claims: object): Promise<void> {
     return await auth.setCustomUserClaims(uid, claims);
+  },
+
+  async getUsers(identifiers: admin.auth.UserIdentifier[]): Promise<admin.auth.GetUsersResult> {
+    return await auth.getUsers(identifiers);
   }
 };
 

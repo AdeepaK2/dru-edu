@@ -167,7 +167,8 @@ export async function POST(req: NextRequest) {
       phone: teacherData.phone || '',
       countryCode: teacherData.countryCode || '+61',
       subject: teacherData.subject,
-      qualifications: teacherData.qualifications || '',      bio: teacherData.bio || '',
+      qualifications: teacherData.qualifications || '',
+      bio: teacherData.bio || '',
       status: teacherData.status,
       hireDate: teacherData.hireDate || new Date().toISOString().split('T')[0],
       address: teacherData.address || '',
@@ -235,7 +236,8 @@ export async function GET(req: NextRequest) {
       if (cachedTeachers) {
         return NextResponse.json(cachedTeachers);
       }
-        const snapshot = await firebaseAdmin.db.collection('teachers').get();
+      
+      const snapshot = await firebaseAdmin.db.collection('teachers').get();
       const teachersWithIds = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -285,7 +287,9 @@ export async function PATCH(req: NextRequest) {
         { error: "Teacher not found" },
         { status: 404 }
       );
-    }    const updateData = {
+    }
+    
+    const updateData = {
       ...validatedData.data,
       updatedAt: FieldValue.serverTimestamp() as any
     };
@@ -294,7 +298,8 @@ export async function PATCH(req: NextRequest) {
     const updatePromises = [
       firebaseAdmin.firestore.updateDoc('teachers', id, updateData)
     ];
-      // Update Firebase Auth user if email or name changed
+    
+    // Update Firebase Auth user if email or name changed
     if (validatedData.data.email || validatedData.data.name) {
       const authUpdate: any = {};
       if (validatedData.data.email) authUpdate.email = validatedData.data.email;
