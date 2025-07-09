@@ -26,7 +26,14 @@ function initializeFirebaseAdmin() {
       const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
       
       if (missingVars.length > 0) {
-        throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+        console.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+        // During build time, we might not have access to environment variables
+        // Return a mock admin instance or throw in production
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+        }
+        console.warn('Running in development mode without Firebase Admin credentials');
+        return null;
       }
 
       // Use environment variables instead of importing service account JSON
@@ -61,10 +68,10 @@ function initializeFirebaseAdmin() {
 
 // Initialize services
 const adminInstance = initializeFirebaseAdmin();
-const db: Firestore = getFirestore();
-const auth: Auth = getAuth();
-const storage: Storage = getStorage();
-const rtdb: Database = getDatabase();
+const db: Firestore = adminInstance ? getFirestore() : null as any;
+const auth: Auth = adminInstance ? getAuth() : null as any;
+const storage: Storage = adminInstance ? getStorage() : null as any;
+const rtdb: Database = adminInstance ? getDatabase() : null as any;
 
 // Firestore helpers
 const firestore = {
