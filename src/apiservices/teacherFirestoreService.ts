@@ -113,12 +113,23 @@ export class TeacherFirestoreService {
     try {
       const docRef = doc(firestore, COLLECTION_NAME, teacherId);
       
-      const updatePayload = {
-        ...updateData,
+      // Filter out undefined values from updateData
+      const cleanUpdateData: any = {
         updatedAt: Timestamp.now(),
       };
 
-      await updateDoc(docRef, updatePayload);
+      // Only add fields that have defined values
+      Object.entries(updateData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          // For string fields, also check if they're not empty
+          if (typeof value === 'string' && value.trim() === '') {
+            return; // Skip empty strings
+          }
+          cleanUpdateData[key] = value;
+        }
+      });
+
+      await updateDoc(docRef, cleanUpdateData);
       console.log('Teacher updated successfully');
     } catch (error) {
       console.error('Error updating teacher:', error);

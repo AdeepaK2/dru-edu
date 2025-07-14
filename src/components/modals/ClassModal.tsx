@@ -6,6 +6,7 @@ import { Modal, Button, Input } from '../ui';
 import { ClassData, ClassDisplayData, timeSlotSchema } from '@/models/classSchema';
 import { CenterDocument } from '@/apiservices/centerFirestoreService';
 import { SubjectDocument } from '@/models/subjectSchema';
+import { TeacherDocument } from '@/models/teacherSchema';
 
 interface TimeSlot {
   day: string;
@@ -23,6 +24,7 @@ interface ClassModalProps {
   initialData?: ClassDisplayData;
   centers?: CenterDocument[];
   subjects?: SubjectDocument[];
+  teachers?: TeacherDocument[];
 }
 
 export default function ClassModal({
@@ -34,19 +36,26 @@ export default function ClassModal({
   loading = false,
   initialData,
   centers = [],
-  subjects = []
+  subjects = [],
+  teachers = []
 }: ClassModalProps) {  const [formData, setFormData] = useState<Omit<ClassData, 'schedule'> & { schedule: TimeSlot[] }>({
     name: '',
     centerId: '1' as const,
     year: '',
     subject: '',
     subjectId: '',
+    teacherId: '',
     schedule: [{ day: '', startTime: '', endTime: '' }],
     monthlyFee: 0,
     description: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Debug centers data
+  useEffect(() => {
+    console.log('Centers in ClassModal:', centers);
+  }, [centers]);
 
   // Initialize form data when modal opens or initialData changes
   useEffect(() => {
@@ -76,6 +85,7 @@ export default function ClassModal({
           year: initialData.year || '',
           subject: initialData.subject || '',
           subjectId: '', // Will need to be populated from existing data if available
+          teacherId: initialData.teacherId || '', // Populate from existing data
           schedule: scheduleSlots.length > 0 ? scheduleSlots : [{ day: '', startTime: '', endTime: '' }],
           monthlyFee: initialData.monthlyFee || 0,
           description: initialData.description || ''
@@ -86,6 +96,7 @@ export default function ClassModal({
           year: '',
           subject: '',
           subjectId: '',
+          teacherId: '',
           schedule: [{ day: '', startTime: '', endTime: '' }],
           monthlyFee: 0,
           description: ''
@@ -224,9 +235,18 @@ export default function ClassModal({
           startTime: slot.startTime.trim(),
           endTime: slot.endTime.trim()
         })),
-        monthlyFee: Number(formData.monthlyFee),
-        description: formData.description?.trim() || undefined
+        monthlyFee: Number(formData.monthlyFee)
       };
+
+      // Only add description if it has content
+      if (formData.description && formData.description.trim()) {
+        classData.description = formData.description.trim();
+      }
+
+      // Only add teacherId if it's selected
+      if (formData.teacherId && formData.teacherId.trim()) {
+        classData.teacherId = formData.teacherId.trim();
+      }
 
       await onSubmit(classData);
     } catch (error) {
@@ -240,6 +260,7 @@ export default function ClassModal({
       year: '',
       subject: '',
       subjectId: '',
+      teacherId: '',
       schedule: [{ day: '', startTime: '', endTime: '' }],
       monthlyFee: 0,
       description: ''
@@ -290,12 +311,24 @@ export default function ClassModal({
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                   required
                 >
-                  {centers.map(center => (
-                    <option key={center.center} value={center.center.toString()}>
-                      Center {center.center} - {center.location}
-                    </option>
-                  ))}
+                  {centers && centers.length > 0 ? (
+                    centers.map(center => (
+                      <option key={center.center} value={center.center.toString()}>
+                        Center {center.center} - {center.location}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="1">Center 1 - Glen Waverley</option>
+                      <option value="2">Center 2 - Cranbourne</option>
+                    </>
+                  )}
                 </select>
+                {errors.centerId && (
+                  <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                    {errors.centerId}
+                  </p>
+                )}
               </div>
             </div>            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -341,6 +374,32 @@ export default function ClassModal({
                 </select>
                 {errors.year && <p className="mt-1 text-sm text-red-600">{errors.year}</p>}
               </div>
+            </div>
+
+            {/* Teacher Assignment */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Assigned Teacher
+              </label>
+              <select
+                value={formData.teacherId || ''}
+                onChange={(e) => handleInputChange('teacherId', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+              >
+                <option value="">No teacher assigned</option>
+                {teachers
+                  .filter(teacher => teacher.status === 'Active')
+                  .map(teacher => (
+                    <option key={teacher.id} value={teacher.id}>
+                      {teacher.name} - {teacher.subject || 'Various'}
+                    </option>
+                  ))}
+              </select>
+              {errors.teacherId && (
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">
+                  {errors.teacherId}
+                </p>
+              )}
             </div>
 
             <div>

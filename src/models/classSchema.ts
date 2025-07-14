@@ -51,6 +51,7 @@ export interface ClassDisplayData {
   subject: string;
   year: string;
   teacher: string;
+  teacherId?: string; // Add teacherId for editing
   schedule: string;
   students: number;
   status: string;
@@ -62,7 +63,7 @@ export interface ClassDisplayData {
 }
 
 // Helper function to convert ClassDocument to ClassDisplayData
-export function classDocumentToDisplay(doc: ClassDocument, centerName?: string): ClassDisplayData {
+export function classDocumentToDisplay(doc: ClassDocument, centerName?: string, teacherName?: string): ClassDisplayData {
   const scheduleText = doc.schedule.map(slot => 
     `${slot.day}: ${slot.startTime} - ${slot.endTime}`
   ).join(', ');
@@ -73,7 +74,8 @@ export function classDocumentToDisplay(doc: ClassDocument, centerName?: string):
     name: doc.name,
     subject: doc.subject,
     year: doc.year,
-    teacher: doc.teacherId ? 'Assigned' : 'Not Assigned',
+    teacher: teacherName || (doc.teacherId ? 'Assigned' : 'Not Assigned'),
+    teacherId: doc.teacherId,
     schedule: scheduleText,
     students: doc.enrolledStudents,
     status: doc.status,
@@ -87,7 +89,7 @@ export function classDocumentToDisplay(doc: ClassDocument, centerName?: string):
 
 // Helper function to convert form data to ClassData
 export function formDataToClass(formData: any): ClassData {
-  return {
+  const classData: ClassData = {
     name: formData.name,
     centerId: formData.centerId as '1' | '2',
     year: formData.year,
@@ -95,7 +97,16 @@ export function formDataToClass(formData: any): ClassData {
     subjectId: formData.subjectId,
     schedule: formData.schedule || [],
     monthlyFee: parseFloat(formData.monthlyFee),
-    teacherId: formData.teacherId,
-    description: formData.description || undefined,
   };
+
+  // Only add optional fields if they have values
+  if (formData.teacherId && formData.teacherId.trim()) {
+    classData.teacherId = formData.teacherId;
+  }
+
+  if (formData.description && formData.description.trim()) {
+    classData.description = formData.description;
+  }
+
+  return classData;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Users, 
   GraduationCap, 
@@ -12,28 +12,152 @@ import {
   Zap,
   UserPlus,
   PlusCircle,
-  Upload
+  Upload,
+  Shield
 } from 'lucide-react';
 import { NavigationLoader } from '@/utils/performance';
 import { useNavigationLoading } from '@/hooks/useNavigationLoading';
+import AdminModal from '@/components/modals/AdminModal';
+import { AdminData } from '@/models/adminSchema';
+import { CenterFirestoreService } from '@/apiservices/centerFirestoreService';
+import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
+import { StudentFirestoreService } from '@/apiservices/studentFirestoreService';
+import { VideoFirestoreService } from '@/apiservices/videoFirestoreService';
 
 export default function AdminDashboard() {
   const { setLoading: setNavLoading } = useNavigationLoading();
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [centersInitialized, setCentersInitialized] = useState(false);
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    totalTeachers: 0,
+    totalClasses: 0,
+    totalVideos: 0,
+    totalSubjects: 0,
+    activeClasses: 0,
+    totalQuestions: 0,
+    pendingTransactions: 0,
+    systemStatus: 'Loading...'
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
-  // Clear loading state when dashboard loads
+  // Fetch dashboard statistics
+  const fetchDashboardStats = async () => {
+    try {
+      setStatsLoading(true);
+      
+      // Fetch data from all services in parallel
+      const [
+        studentsData,
+        teachersData,
+        classesData,
+        videosData,
+        subjectsData
+      ] = await Promise.all([
+        StudentFirestoreService.getAllStudents().catch(() => []),
+        TeacherFirestoreService.getAllTeachers().catch(() => []),
+        ClassFirestoreService.getAllClasses().catch(() => []),
+        VideoFirestoreService.getAllVideos().catch(() => []),
+        SubjectFirestoreService.getAllSubjects().catch(() => [])
+      ]);
+
+      // Calculate statistics
+      const activeClasses = classesData.filter(cls => cls.status === 'Active').length;
+      const activeSubjects = subjectsData.filter(sub => sub.isActive).length;
+      
+      setStats({
+        totalStudents: studentsData.length,
+        totalTeachers: teachersData.length,
+        totalClasses: classesData.length,
+        totalVideos: videosData.length,
+        totalSubjects: subjectsData.length,
+        activeClasses: activeClasses,
+        totalQuestions: 0, // Will need QuestionBankFirestoreService for this
+        pendingTransactions: 0, // Will need TransactionFirestoreService for this
+        systemStatus: 'Healthy'
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      setStats(prev => ({
+        ...prev,
+        systemStatus: 'Error'
+      }));
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // Clear loading state when dashboard loads and fetch stats
   useEffect(() => {
     setNavLoading(false);
+    fetchDashboardStats();
   }, [setNavLoading]);
 
-  // Dummy data for dashboard
-  const stats = {
-    totalStudents: 1247,
-    totalTeachers: 89,
-    totalClasses: 156,
-    totalVideos: 342,
-    pendingTransactions: 23,
-    totalQuestions: 1892,
-    systemStatus: 'Healthy'
+  // Handle admin creation
+  const handleAdminCreate = async (adminData: AdminData) => {
+    setAdminLoading(true);
+    
+    try {
+      const response = await fetch('/api/admin-side/admin-manage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(adminData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create admin');
+      }
+
+      const result = await response.json();
+      console.log('Admin created successfully:', result);
+      alert(`Admin "${adminData.name}" created successfully!`);
+      setShowAdminModal(false);
+    } catch (error) {
+      console.error('Error creating admin:', error);
+      alert(`Failed to create admin: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  // Initialize centers in database
+  const initializeCenters = async () => {
+    try {
+      // Check if centers already exist
+      const existingCenters = await CenterFirestoreService.getAllCenters();
+      if (existingCenters.length > 0) {
+        alert('Centers already exist in database');
+        setCentersInitialized(true);
+        return;
+      }
+
+      // Add the two centers to Firestore
+      const centersData = [
+        { center: 1, location: 'Glen Waverley' },
+        { center: 2, location: 'Cranbourne' }
+      ];
+
+      // Note: You'll need to add a createCenter method to CenterFirestoreService
+      // For now, let's add them directly to Firestore
+      const { collection, addDoc } = await import('firebase/firestore');
+      const { firestore } = await import('@/utils/firebase-client');
+      
+      for (const centerData of centersData) {
+        await addDoc(collection(firestore, 'center'), centerData);
+      }
+
+      alert('Centers initialized successfully!');
+      setCentersInitialized(true);
+    } catch (error) {
+      console.error('Error initializing centers:', error);
+      alert('Failed to initialize centers: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   const recentActivities = [
@@ -65,10 +189,14 @@ export default function AdminDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Students</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalStudents.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalStudents.toLocaleString()}
+              </p>
             </div>
           </div>
-        </div>        {/* Teachers Stats */}
+        </div>
+
+        {/* Teachers Stats */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
@@ -76,10 +204,14 @@ export default function AdminDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Teachers</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalTeachers}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalTeachers}
+              </p>
             </div>
           </div>
-        </div>        {/* Classes Stats */}
+        </div>
+
+        {/* Classes Stats */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
@@ -87,10 +219,14 @@ export default function AdminDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Classes</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalClasses}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.activeClasses}
+              </p>
             </div>
           </div>
-        </div>        {/* Videos Stats */}
+        </div>
+
+        {/* Videos Stats */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-red-100 dark:bg-red-900 rounded-lg">
@@ -98,7 +234,9 @@ export default function AdminDashboard() {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Videos</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalVideos}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalVideos}
+              </p>
             </div>
           </div>
         </div>
@@ -175,7 +313,15 @@ export default function AdminDashboard() {
             <h2 className="text-lg font-medium text-gray-900 dark:text-white">Quick Actions</h2>
           </div>
           <div className="p-6">
-            <div className="space-y-3">              <button className="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
+            <div className="space-y-3">
+              <button 
+                onClick={() => setShowAdminModal(true)}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
+              >
+                <Shield className="w-5 h-5 mr-2" />
+                Add New Admin
+              </button>
+              <button className="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
                 <UserPlus className="w-5 h-5 mr-2" />
                 Add New Student
               </button>              <button className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
@@ -191,10 +337,35 @@ export default function AdminDashboard() {
                 <FileQuestion className="w-5 h-5 mr-2" />
                 Add Question
               </button>
+              
+              <button 
+                onClick={initializeCenters}
+                disabled={centersInitialized}
+                className={`w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center ${
+                  centersInitialized 
+                    ? 'bg-gray-400 cursor-not-allowed text-gray-200' 
+                    : 'bg-teal-600 hover:bg-teal-700 text-white'
+                }`}
+              >
+                <Building2 className="w-5 h-5 mr-2" />
+                {centersInitialized ? 'Centers Initialized' : 'Initialize Centers'}
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Admin Creation Modal */}
+      {showAdminModal && (
+        <AdminModal
+          isOpen={showAdminModal}
+          onClose={() => setShowAdminModal(false)}
+          onSubmit={handleAdminCreate}
+          loading={adminLoading}
+          title="Add New Admin"
+          submitButtonText="Create Admin"
+        />
+      )}
     </div>
   );
 }

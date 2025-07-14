@@ -60,9 +60,15 @@ export class ClassFirestoreService {
       // Generate auto class ID
       const classId = await this.generateClassId();
       
-      // Prepare the document data
-      const documentData = {
-        ...validatedData,
+      // Prepare the document data, filtering out undefined values
+      const documentData: any = {
+        name: validatedData.name,
+        centerId: validatedData.centerId,
+        year: validatedData.year,
+        subject: validatedData.subject,
+        subjectId: validatedData.subjectId,
+        schedule: validatedData.schedule,
+        monthlyFee: validatedData.monthlyFee,
         classId,
         status: 'Active' as const,
         enrolledStudents: 0,
@@ -72,6 +78,15 @@ export class ClassFirestoreService {
         // createdBy: currentUserId, // You can add this when you have auth context
         // lastModifiedBy: currentUserId,
       };
+
+      // Only add optional fields if they have values
+      if (validatedData.description && validatedData.description.trim()) {
+        documentData.description = validatedData.description;
+      }
+      
+      if (validatedData.teacherId && validatedData.teacherId.trim()) {
+        documentData.teacherId = validatedData.teacherId;
+      }
 
       const docRef = await addDoc(this.collectionRef, documentData);
       console.log('Class created with ID:', docRef.id);
@@ -127,13 +142,24 @@ export class ClassFirestoreService {
     try {
       const docRef = doc(firestore, COLLECTION_NAME, classId);
       
-      const updatePayload = {
-        ...updateData,
+      // Filter out undefined values from updateData
+      const cleanUpdateData: any = {
         updatedAt: Timestamp.now(),
         // lastModifiedBy: currentUserId, // You can add this when you have auth context
       };
 
-      await updateDoc(docRef, updatePayload);
+      // Only add fields that have defined values
+      Object.entries(updateData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          // For string fields, also check if they're not empty
+          if (typeof value === 'string' && value.trim() === '') {
+            return; // Skip empty strings
+          }
+          cleanUpdateData[key] = value;
+        }
+      });
+
+      await updateDoc(docRef, cleanUpdateData);
       console.log('Class updated successfully');
     } catch (error) {
       console.error('Error updating class:', error);
