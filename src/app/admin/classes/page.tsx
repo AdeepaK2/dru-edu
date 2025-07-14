@@ -5,9 +5,11 @@ import { BookOpen, Search, Edit2, Trash2, Plus, XCircle, Users, Clock } from 'lu
 import { ClassDocument, ClassDisplayData, classDocumentToDisplay } from '@/models/classSchema';
 import { CenterDocument } from '@/apiservices/centerFirestoreService';
 import { SubjectDocument } from '@/models/subjectSchema';
+import { TeacherDocument } from '@/models/teacherSchema';
 import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
 import { CenterFirestoreService } from '@/apiservices/centerFirestoreService';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
 import { Button, ConfirmDialog, Input, Select } from '@/components/ui';
 import { useCachedData } from '@/hooks/useAdminCache';
 import ClassModal from '@/components/modals/ClassModal';
@@ -63,15 +65,33 @@ export default function ClassManager() {
     { ttl: 300 } // Cache for 5 minutes
   );
 
-  // Cache classes data with center mapping
+  // Cache teachers data
+  const { data: teachers = [] } = useCachedData<TeacherDocument[]>(
+    'teachers',
+    async () => {
+      return new Promise<TeacherDocument[]>((resolve, reject) => {
+        TeacherFirestoreService.getAllTeachers()
+          .then(teacherDocuments => {
+            resolve(teacherDocuments);
+          })
+          .catch(error => {
+            reject(error);
+          });
+      });
+    },
+    { ttl: 300 } // Cache for 5 minutes
+  );
+
+  // Cache classes data with center and teacher mapping
   const { data: classes = [], loading, error, refetch } = useCachedData<ClassDisplayData[]>(
-    'classes',
+    `classes-${centers?.length || 0}-${teachers?.length || 0}`, // Include centers and teachers in cache key
     async () => {
       return new Promise<ClassDisplayData[]>((resolve, reject) => {        const unsubscribe = ClassFirestoreService.subscribeToClasses(
           (classDocuments: ClassDocument[]) => {
             const displayClasses = classDocuments.map(doc => {
               const center = centers?.find(c => c.center.toString() === doc.centerId);
-              return classDocumentToDisplay(doc, center?.location);
+              const teacher = teachers?.find(t => t.id === doc.teacherId);
+              return classDocumentToDisplay(doc, center?.location, teacher?.name);
             });
             resolve(displayClasses);
             unsubscribe();
@@ -378,6 +398,7 @@ export default function ClassManager() {
           initialData={editMode ? selectedClass || undefined : undefined}
           centers={centers || []}
           subjects={subjects || []}
+          teachers={teachers || []}
         />
       )}
 

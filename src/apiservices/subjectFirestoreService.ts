@@ -60,15 +60,22 @@ export class SubjectFirestoreService {
       // Generate auto subject ID
       const subjectId = await this.generateSubjectId();
       
-      // Prepare the document data
-      const documentData = {
-        ...validatedData,
+      // Prepare the document data, filtering out undefined values
+      const documentData: any = {
+        name: validatedData.name,
+        grade: validatedData.grade,
+        isActive: validatedData.isActive,
         subjectId,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
         // createdBy: currentUserId, // You can add this when you have auth context
         // lastModifiedBy: currentUserId,
       };
+
+      // Only add description if it has content
+      if (validatedData.description && validatedData.description.trim()) {
+        documentData.description = validatedData.description;
+      }
 
       const docRef = await addDoc(this.collectionRef, documentData);
       console.log('Subject created with ID:', docRef.id);
@@ -124,13 +131,24 @@ export class SubjectFirestoreService {
     try {
       const docRef = doc(firestore, COLLECTION_NAME, subjectId);
       
-      const updatePayload = {
-        ...updateData,
+      // Filter out undefined values from updateData
+      const cleanUpdateData: any = {
         updatedAt: Timestamp.now(),
         // lastModifiedBy: currentUserId, // You can add this when you have auth context
       };
 
-      await updateDoc(docRef, updatePayload);
+      // Only add fields that have defined values
+      Object.entries(updateData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          // For string fields, also check if they're not empty
+          if (typeof value === 'string' && value.trim() === '') {
+            return; // Skip empty strings
+          }
+          cleanUpdateData[key] = value;
+        }
+      });
+
+      await updateDoc(docRef, cleanUpdateData);
       console.log('Subject updated successfully');
     } catch (error) {
       console.error('Error updating subject:', error);

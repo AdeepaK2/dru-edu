@@ -58,10 +58,16 @@ export function subjectDocumentToDisplay(
 
 // Helper function to convert form data to SubjectData
 export function formDataToSubject(formData: any): SubjectData {
-  return {
+  const subjectData: SubjectData = {
     name: formData.name,
     grade: formData.grade,
-    description: formData.description || undefined,
     isActive: formData.isActive !== false, // Default to true if undefined
   };
+
+  // Only add description if it has content
+  if (formData.description && formData.description.trim()) {
+    subjectData.description = formData.description;
+  }
+
+  return subjectData;
 }

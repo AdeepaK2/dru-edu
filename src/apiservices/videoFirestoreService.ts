@@ -157,16 +157,49 @@ export class VideoFirestoreService {
       // Generate auto video ID
       const videoId = await this.generateVideoId();
       
-      // Prepare the document data
-      const documentData = {
-        ...validatedData,
+      // Prepare the document data, filtering out undefined values
+      const documentData: any = {
+        title: validatedData.title,
+        description: validatedData.description,
+        videoUrl: validatedData.videoUrl,
+        subjectId: validatedData.subjectId,
+        visibility: validatedData.visibility,
         videoId,
         status: 'active' as const,
         views: 0,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
         createdBy: userId,
-      };      const docRef = await addDoc(this.collectionRef, documentData);
+      };
+
+      // Only add optional fields if they have values
+      if (validatedData.thumbnailUrl && validatedData.thumbnailUrl.trim()) {
+        documentData.thumbnailUrl = validatedData.thumbnailUrl;
+      }
+      
+      if (validatedData.subjectName && validatedData.subjectName.trim()) {
+        documentData.subjectName = validatedData.subjectName;
+      }
+      
+      if (validatedData.assignedClassIds && validatedData.assignedClassIds.length > 0) {
+        documentData.assignedClassIds = validatedData.assignedClassIds;
+      }
+      
+      if (validatedData.assignedStudentIds && validatedData.assignedStudentIds.length > 0) {
+        documentData.assignedStudentIds = validatedData.assignedStudentIds;
+      }
+      
+      if (validatedData.tags && validatedData.tags.length > 0) {
+        documentData.tags = validatedData.tags;
+      }
+      
+      if (validatedData.teacherId && validatedData.teacherId.trim()) {
+        documentData.teacherId = validatedData.teacherId;
+      }
+      
+      if (validatedData.price !== undefined && validatedData.price >= 0) {
+        documentData.price = validatedData.price;
+      }      const docRef = await addDoc(this.collectionRef, documentData);
       return docRef.id;
     } catch (error) {
       console.error('Error creating video:', error);
