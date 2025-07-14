@@ -6,14 +6,14 @@ import {
   GraduationCap, 
   Building2, 
   Video, 
-  CreditCard, 
   FileQuestion, 
   Activity,
   Zap,
   UserPlus,
   PlusCircle,
   Upload,
-  Shield
+  Shield,
+  RefreshCw
 } from 'lucide-react';
 import { NavigationLoader } from '@/utils/performance';
 import { useNavigationLoading } from '@/hooks/useNavigationLoading';
@@ -172,12 +172,24 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       {/* Welcome Header */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          Dashboard Overview
-        </h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Welcome back! Here's what's happening with your platform today.
-        </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Dashboard Overview
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Welcome back! Here's what's happening with your platform today.
+            </p>
+          </div>
+          <button
+            onClick={fetchDashboardStats}
+            disabled={statsLoading}
+            className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${statsLoading ? 'animate-spin' : ''}`} />
+            Refresh Stats
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -243,36 +255,65 @@ export default function AdminDashboard() {
       </div>
 
       {/* Second Row Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">        {/* Transactions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">        {/* Subjects */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
             <div className="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
-              <CreditCard className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+              <FileQuestion className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Pending Transactions</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.pendingTransactions}</p>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Subjects</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalSubjects}
+              </p>
             </div>
           </div>
-        </div>        {/* Questions */}        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <div className="flex items-center">
-            <div className="p-3 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
-              <FileQuestion className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Question Bank</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.totalQuestions.toLocaleString()}</p>
-            </div>
-          </div>
-        </div>        {/* System Status */}
+        </div>
+
+        {/* Total Classes */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
           <div className="flex items-center">
-            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
-              <Activity className="w-6 h-6 text-green-600 dark:text-green-400" />
+            <div className="p-3 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
+              <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Classes</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalClasses}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* System Status */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className={`p-3 rounded-lg ${
+              stats.systemStatus === 'Healthy' 
+                ? 'bg-green-100 dark:bg-green-900' 
+                : stats.systemStatus === 'Error' 
+                ? 'bg-red-100 dark:bg-red-900' 
+                : 'bg-gray-100 dark:bg-gray-900'
+            }`}>
+              <Activity className={`w-6 h-6 ${
+                stats.systemStatus === 'Healthy' 
+                  ? 'text-green-600 dark:text-green-400' 
+                  : stats.systemStatus === 'Error' 
+                  ? 'text-red-600 dark:text-red-400' 
+                  : 'text-gray-600 dark:text-gray-400'
+              }`} />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">System Status</p>
-              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.systemStatus}</p>
+              <p className={`text-2xl font-bold ${
+                stats.systemStatus === 'Healthy' 
+                  ? 'text-green-600 dark:text-green-400' 
+                  : stats.systemStatus === 'Error' 
+                  ? 'text-red-600 dark:text-red-400' 
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}>
+                {stats.systemStatus}
+              </p>
             </div>
           </div>
         </div>
