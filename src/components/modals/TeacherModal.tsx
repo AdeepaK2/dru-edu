@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Timestamp } from 'firebase/firestore';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/form/Input';
 import PhoneInput from '../ui/form/PhoneInput';
 import Select from '../ui/form/Select';
 import { TeacherData, TeacherDocument } from '@/models/teacherSchema';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { SubjectDocument } from '@/models/subjectSchema';
 
 interface TeacherModalProps {
   isOpen: boolean;
@@ -32,7 +35,7 @@ export function TeacherModal({
     email: '',
     phone: '',
     countryCode: '+61',
-    subject: '',
+    subjects: [],
     qualifications: '',
     bio: '',
     status: 'Active',
@@ -42,6 +45,8 @@ export function TeacherModal({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(true);
 
   // Populate form when editing
   useEffect(() => {
@@ -51,7 +56,7 @@ export function TeacherModal({
         email: initialData.email || '',
         phone: initialData.phone || '',
         countryCode: initialData.countryCode || '+61',
-        subject: initialData.subject || '',
+        subjects: initialData.subjects || [],
         qualifications: initialData.qualifications || '',
         bio: initialData.bio || '',
         status: initialData.status || 'Active',
@@ -65,7 +70,7 @@ export function TeacherModal({
         email: '',
         phone: '',
         countryCode: '+61',
-        subject: '',
+        subjects: [],
         qualifications: '',
         bio: '',
         status: 'Active',
@@ -76,6 +81,33 @@ export function TeacherModal({
     setErrors({});
     setTouched({});
   }, [initialData, isOpen]);
+
+  // Fetch subjects when modal opens
+  useEffect(() => {
+    const fetchSubjects = async () => {
+      if (isOpen) {
+        try {
+          setLoadingSubjects(true);
+          const fetchedSubjects = await SubjectFirestoreService.getAllSubjects();
+          setSubjects(fetchedSubjects);
+        } catch (error) {
+          console.error('Error fetching subjects:', error);
+          // Fallback to hardcoded subjects if fetch fails
+          const now = Timestamp.now();
+          setSubjects([
+            { id: 'math', subjectId: 'SUB-2024-001', name: 'Mathematics', grade: 'All', description: '', isActive: true, createdAt: now, updatedAt: now },
+            { id: 'science', subjectId: 'SUB-2024-002', name: 'Science', grade: 'All', description: '', isActive: true, createdAt: now, updatedAt: now },
+            { id: 'english', subjectId: 'SUB-2024-003', name: 'English', grade: 'All', description: '', isActive: true, createdAt: now, updatedAt: now }
+          ]);
+        } finally {
+          setLoadingSubjects(false);
+        }
+      }
+    };
+
+    fetchSubjects();
+  }, [isOpen]);
+  
   // Simplified validation function
   const validateField = (name: string, value: string) => {
     switch (name) {
@@ -84,8 +116,8 @@ export function TeacherModal({
       case 'email':
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return !emailRegex.test(value) ? 'Invalid email format' : '';
-      case 'subject':
-        return value.trim() === '' ? 'Subject is required' : '';
+      case 'subjects':
+        return value.length === 0 ? 'At least one subject is required' : '';
       default:
         return '';
     }
@@ -116,6 +148,22 @@ export function TeacherModal({
     setFormData(prev => ({ ...prev, countryCode }));
   };
 
+  // Handle subject selection/deselection
+  const handleSubjectToggle = (subjectName: string) => {
+    setFormData(prev => {
+      const newSubjects = prev.subjects.includes(subjectName)
+        ? prev.subjects.filter(s => s !== subjectName)
+        : [...prev.subjects, subjectName];
+      
+      return { ...prev, subjects: newSubjects };
+    });
+    
+    // Clear subjects error when user selects subjects
+    if (errors.subjects) {
+      setErrors(prev => ({ ...prev, subjects: '' }));
+    }
+  };
+
   // Handle field blur for validation
   const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -131,7 +179,7 @@ export function TeacherModal({
     // Only required fields
     newErrors.name = validateField('name', formData.name);
     newErrors.email = validateField('email', formData.email);
-    newErrors.subject = validateField('subject', formData.subject);
+    newErrors.subjects = validateField('subjects', formData.subjects);
 
     // Filter out empty errors
     const filteredErrors = Object.fromEntries(
@@ -159,22 +207,11 @@ export function TeacherModal({
     }
   };
 
-  // Subject options
-  const subjectOptions = [
-    { value: 'Mathematics', label: 'Mathematics' },
-    { value: 'Science', label: 'Science' },
-    { value: 'English', label: 'English' },
-    { value: 'History', label: 'History' },
-    { value: 'Geography', label: 'Geography' },
-    { value: 'Physics', label: 'Physics' },
-    { value: 'Chemistry', label: 'Chemistry' },
-    { value: 'Biology', label: 'Biology' },
-    { value: 'Computer Science', label: 'Computer Science' },
-    { value: 'Art', label: 'Art' },
-    { value: 'Music', label: 'Music' },
-    { value: 'Physical Education', label: 'Physical Education' },
-    { value: 'Other', label: 'Other' }
-  ];
+  // Subject options from fetched subjects
+  const subjectOptions = subjects.map(subject => ({
+    value: subject.name,
+    label: `${subject.name} (Grade ${subject.grade})`
+  }));
 
   // Status options
   const statusOptions = [
@@ -244,17 +281,67 @@ export function TeacherModal({
             Professional Information
           </h3>          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Select
-              label="Subject"
-              name="subject"
-              value={formData.subject}
-              onChange={handleInputChange}
-              onBlur={handleBlur}
-              error={touched.subject ? errors.subject : ''}
-              options={subjectOptions}
-              required
-              placeholder="Select a subject"
-            />
+            {/* Multi-Select Subjects */}
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-700 ml-1">
+                Subjects <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <div className="w-full px-4 py-3 border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 min-h-[48px]">
+                  {loadingSubjects ? (
+                    <div className="text-gray-500">Loading subjects...</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {/* Selected subjects display */}
+                      {formData.subjects.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {formData.subjects.map((subject) => (
+                            <span
+                              key={subject}
+                              className="inline-flex items-center px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-800 rounded-full"
+                            >
+                              {subject}
+                              <button
+                                type="button"
+                                onClick={() => handleSubjectToggle(subject)}
+                                className="ml-1 text-indigo-600 hover:text-indigo-800"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {/* Subject checkboxes */}
+                      <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto">
+                        {subjects.map((subject) => (
+                          <label
+                            key={subject.id}
+                            className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.subjects.includes(subject.name)}
+                              onChange={() => handleSubjectToggle(subject.name)}
+                              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-gray-700">{subject.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                      
+                      {formData.subjects.length === 0 && (
+                        <div className="text-gray-400 text-sm">Select subjects this teacher will teach</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {touched.subjects && errors.subjects && (
+                  <p className="mt-1 text-sm text-red-600">{errors.subjects}</p>
+                )}
+              </div>
+            </div>
             
             <Select
               label="Status"

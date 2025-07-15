@@ -84,12 +84,20 @@ const Navbar: React.FC = () => {
             >
               Contact
             </Link>
-            <Link 
-              href="/admin/login" 
-              className="btn-primary"
-            >
-              Login
-            </Link>
+            <div className="flex items-center space-x-4">
+              <Link 
+                href="/teacher/login" 
+                className="font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400 transition-colors"
+              >
+                Teacher Login
+              </Link>
+              <Link 
+                href="/admin/login" 
+                className="btn-primary"
+              >
+                Admin Login
+              </Link>
+            </div>
           </div>
           
           {/* Mobile menu button */}
@@ -155,11 +163,18 @@ const Navbar: React.FC = () => {
             Contact
           </Link>
           <Link
+            href="/teacher/login"
+            className="block py-2 px-4 rounded-md text-secondary-600 dark:text-secondary-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            onClick={() => setIsOpen(false)}
+          >
+            Teacher Login
+          </Link>
+          <Link
             href="/admin/login"
             className="block w-full py-2 px-4 rounded-md bg-primary-600 text-white text-center font-medium"
             onClick={() => setIsOpen(false)}
           >
-            Login
+            Admin Login
           </Link>
         </div>
       </div>

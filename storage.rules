@@ -1,0 +1,31 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to upload videos and thumbnails
+    match /videos/{videoId} {
+      allow write: if request.auth != null;
+      allow read: if true; // Public read access for video playback
+    }
+    
+    match /thumbnails/{thumbnailId} {
+      allow write: if request.auth != null;
+      allow read: if true; // Public read access for thumbnail display
+    }
+    
+    // Allow authenticated users to upload question images
+    match /question-images/{imageId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authenticated teachers to upload profile images (temporary debug rule)
+    match /teacher-profiles/{allPaths=**} {
+      allow read, write, delete: if request.auth != null;
+    }
+    
+    // Default rule - deny all other access
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

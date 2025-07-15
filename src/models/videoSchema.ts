@@ -9,6 +9,8 @@ export const videoSchema = z.object({
   videoUrl: z.string().url('Invalid video URL'),
   subjectId: z.string().min(1, 'Subject is required'), // Reference to subject document ID
   subjectName: z.string().optional(), // For backward compatibility and display
+  lessonId: z.string().optional(), // Optional reference to lesson document ID
+  lessonName: z.string().optional(), // For display purposes
   assignedClassIds: z.array(z.string()).optional(), // Classes this video is assigned to
   assignedStudentIds: z.array(z.string()).optional(), // Individual students this video is assigned to
   tags: z.array(z.string()).optional(), // Tags for filtering/categorization

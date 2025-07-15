@@ -8,12 +8,13 @@ export const teacherSchema = z.object({
   email: z.string().email('Invalid email format'),
   phone: z.string().optional(),
   countryCode: z.string().default('+61'), // Default to Australia
-  subject: z.string().min(1, 'Subject is required'),
+  subjects: z.array(z.string()).min(1, 'At least one subject is required'),
   qualifications: z.string().optional(),
   bio: z.string().optional(),
   status: z.enum(['Active', 'On Leave', 'Inactive']).default('Active'),
   hireDate: z.string().optional(),
   address: z.string().optional(),
+  profileImageUrl: z.string().optional(),
 });
 
 // Teacher update schema (all fields optional except id)
@@ -26,13 +27,14 @@ export interface Teacher {
   email: string;
   phone: string;
   countryCode: string;
-  subject: string;
+  subjects: string[];
   qualifications: string;
   bio?: string;
   status: 'Active' | 'On Leave' | 'Inactive';
   hireDate: string;
   address?: string;
   avatar: string;
+  profileImageUrl?: string;
   classesAssigned: number;
   studentsCount: number;
 }
@@ -44,13 +46,14 @@ export interface TeacherDocument {
   email: string;
   phone: string;
   countryCode: string;
-  subject: string;
+  subjects: string[];
   qualifications: string;
   bio?: string;
   status: 'Active' | 'On Leave' | 'Inactive';
   hireDate: string;
   address?: string;
   avatar: string;
+  profileImageUrl?: string;
   classesAssigned: number;
   studentsCount: number;
   uid: string; // Firebase Auth UID

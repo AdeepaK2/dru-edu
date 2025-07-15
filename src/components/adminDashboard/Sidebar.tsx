@@ -21,7 +21,8 @@ const menuItems = [
   { label: 'Dashboard', icon: <LayoutDashboard size={20} />, path: '/admin' },
   { label: 'Students', icon: <Users size={20} />, path: '/admin/students' },
   { label: 'Teachers', icon: <GraduationCap size={20} />, path: '/admin/teachers' },
-  { label: 'Subjects', icon: <Library size={20} />, path: '/admin/subjects' },  { label: 'Classes', icon: <BookOpen size={20} />, path: '/admin/classes' },
+  { label: 'Subjects', icon: <Library size={20} />, path: '/admin/subjects' },
+  { label: 'Classes', icon: <BookOpen size={20} />, path: '/admin/classes' },
   { label: 'Video Portal', icon: <Video size={20} />, path: '/admin/videos' },
   { label: 'Transactions', icon: <CreditCard size={20} />, path: '/admin/transactions' },
   { label: 'Question Banks', icon: <FileQuestion size={20} />, path: '/admin/question-banks' },
@@ -36,9 +37,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
   const pathname = usePathname();
 
   return (
-    <div className={`sidebar transition-all duration-300 ${isOpen ? 'w-64' : 'w-16'} fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-xl z-10 border-r border-gray-200 dark:border-gray-700`}>
+    <div className={`sidebar transition-all duration-300 ${isOpen ? 'w-64' : 'w-16'} fixed left-0 top-16 h-[calc(100vh-4rem)] bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 shadow-xl z-10 border-r border-gray-200 dark:border-gray-700 flex flex-col`}>
       
-      <nav className="mt-6 pb-20">
+      <nav className="flex-1 mt-6 pb-20 overflow-y-auto">
         <ul className="space-y-2 px-3">
           {menuItems.map((item) => (
             <li key={item.path}>
@@ -65,7 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
         </ul>
       </nav>
       
-      <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+      <div className="flex-shrink-0 p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
         <Link
           href="/admin/logout"
           prefetch={false}

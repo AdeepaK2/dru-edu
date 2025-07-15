@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
       bio: body.bio === '' ? undefined : body.bio,
       address: body.address === '' ? undefined : body.address,
       hireDate: body.hireDate === '' ? undefined : body.hireDate,
+      profileImageUrl: body.profileImageUrl === '' ? undefined : body.profileImageUrl,
     };
     
     console.log('Processed teacher data:', processedBody);
@@ -166,13 +167,14 @@ export async function POST(req: NextRequest) {
       email: teacherData.email,
       phone: teacherData.phone || '',
       countryCode: teacherData.countryCode || '+61',
-      subject: teacherData.subject,
+      subjects: teacherData.subjects || [],
       qualifications: teacherData.qualifications || '',
       bio: teacherData.bio || '',
       status: teacherData.status,
       hireDate: teacherData.hireDate || new Date().toISOString().split('T')[0],
       address: teacherData.address || '',
       avatar: initials,
+      profileImageUrl: teacherData.profileImageUrl || '',
       classesAssigned: 0,
       studentsCount: 0,
       uid: userRecord.uid,
@@ -200,7 +202,7 @@ export async function POST(req: NextRequest) {
         name: teacherData.name, 
         email: teacherData.email,
         avatar: initials,
-        subject: teacherData.subject
+        subjects: teacherData.subjects
       },
       { status: 201 }
     );
@@ -312,11 +314,18 @@ export async function PATCH(req: NextRequest) {
     
     await Promise.all(updatePromises);
     
+    // Get the updated teacher data
+    const updatedTeacher = await firebaseAdmin.firestore.getDoc('teachers', id);
+    
     // Clear cache
     cacheUtils.invalidate('teachers');
     
     return NextResponse.json(
-      { message: "Teacher updated successfully" },
+      { 
+        message: "Teacher updated successfully", 
+        id,
+        ...updatedTeacher
+      },
       { status: 200 }
     );
   } catch (error: any) {
@@ -331,8 +340,18 @@ export async function PATCH(req: NextRequest) {
 // DELETE - Delete a teacher
 export async function DELETE(req: NextRequest) {
   try {
+    // Try to get ID from query parameter first, then from request body
     const url = new URL(req.url);
-    const id = url.searchParams.get('id');
+    let id = url.searchParams.get('id');
+    
+    if (!id) {
+      try {
+        const body = await req.json();
+        id = body.id;
+      } catch (error) {
+        // If no body or invalid JSON, id remains null
+      }
+    }
     
     if (!id) {
       return NextResponse.json(
@@ -350,11 +369,27 @@ export async function DELETE(req: NextRequest) {
       );
     }
     
-    // Perform deletions in parallel
-    await Promise.all([
-      firebaseAdmin.firestore.deleteDoc('teachers', id),
-      firebaseAdmin.authentication.deleteUser(existingTeacher.uid)
-    ]);
+    // Perform deletions - delete Firestore document first, then auth user
+    try {
+      // Delete the Firestore document
+      await firebaseAdmin.firestore.deleteDoc('teachers', id);
+      
+      // Delete the authentication user if it exists
+      if (existingTeacher.uid) {
+        try {
+          await firebaseAdmin.authentication.deleteUser(existingTeacher.uid);
+        } catch (authError: any) {
+          // Log but don't fail if auth user doesn't exist
+          if (authError.code !== 'auth/user-not-found') {
+            console.error('Error deleting auth user:', authError);
+            // Continue anyway since Firestore document is already deleted
+          }
+        }
+      }
+    } catch (firestoreError) {
+      console.error('Error deleting teacher document:', firestoreError);
+      throw firestoreError;
+    }
     
     // Clear cache
     cacheUtils.invalidate('teachers');
