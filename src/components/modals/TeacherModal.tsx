@@ -7,7 +7,7 @@ import Button from '../ui/Button';
 import Input from '../ui/form/Input';
 import PhoneInput from '../ui/form/PhoneInput';
 import Select from '../ui/form/Select';
-import { TeacherData, TeacherDocument } from '@/models/teacherSchema';
+import { TeacherData, TeacherDocument, SubjectGrade } from '@/models/teacherSchema';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { SubjectDocument } from '@/models/subjectSchema';
 
@@ -36,6 +36,7 @@ export function TeacherModal({
     phone: '',
     countryCode: '+61',
     subjects: [],
+    subjectGrades: [],
     qualifications: '',
     bio: '',
     status: 'Active',
@@ -57,6 +58,7 @@ export function TeacherModal({
         phone: initialData.phone || '',
         countryCode: initialData.countryCode || '+61',
         subjects: initialData.subjects || [],
+        subjectGrades: initialData.subjectGrades || [],
         qualifications: initialData.qualifications || '',
         bio: initialData.bio || '',
         status: initialData.status || 'Active',
@@ -71,6 +73,7 @@ export function TeacherModal({
         phone: '',
         countryCode: '+61',
         subjects: [],
+        subjectGrades: [],
         qualifications: '',
         bio: '',
         status: 'Active',
@@ -109,7 +112,7 @@ export function TeacherModal({
   }, [isOpen]);
   
   // Simplified validation function
-  const validateField = (name: string, value: string) => {
+  const validateField = (name: string, value: any) => {
     switch (name) {
       case 'name':
         return value.trim() === '' ? 'Name is required' : '';
@@ -117,7 +120,7 @@ export function TeacherModal({
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         return !emailRegex.test(value) ? 'Invalid email format' : '';
       case 'subjects':
-        return value.length === 0 ? 'At least one subject is required' : '';
+        return Array.isArray(value) && value.length === 0 ? 'At least one subject is required' : '';
       default:
         return '';
     }
@@ -148,14 +151,38 @@ export function TeacherModal({
     setFormData(prev => ({ ...prev, countryCode }));
   };
 
-  // Handle subject selection/deselection
-  const handleSubjectToggle = (subjectName: string) => {
+  // Handle subject selection/deselection with grade
+  const handleSubjectToggle = (subject: SubjectDocument) => {
+    const subjectKey = `${subject.name}-${subject.grade}`;
+    const isSelected = formData.subjectGrades.some(sg => 
+      sg.subjectId === subject.id && sg.grade === subject.grade
+    );
+    
     setFormData(prev => {
-      const newSubjects = prev.subjects.includes(subjectName)
-        ? prev.subjects.filter(s => s !== subjectName)
-        : [...prev.subjects, subjectName];
+      let newSubjects: string[];
+      let newSubjectGrades: SubjectGrade[];
       
-      return { ...prev, subjects: newSubjects };
+      if (isSelected) {
+        // Remove subject
+        newSubjects = prev.subjects.filter(s => s !== subjectKey);
+        newSubjectGrades = prev.subjectGrades.filter(sg => 
+          !(sg.subjectId === subject.id && sg.grade === subject.grade)
+        );
+      } else {
+        // Add subject
+        newSubjects = [...prev.subjects, subjectKey];
+        newSubjectGrades = [...prev.subjectGrades, {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          grade: subject.grade
+        }];
+      }
+      
+      return { 
+        ...prev, 
+        subjects: newSubjects,
+        subjectGrades: newSubjectGrades
+      };
     });
     
     // Clear subjects error when user selects subjects
@@ -179,7 +206,7 @@ export function TeacherModal({
     // Only required fields
     newErrors.name = validateField('name', formData.name);
     newErrors.email = validateField('email', formData.email);
-    newErrors.subjects = validateField('subjects', formData.subjects);
+    newErrors.subjects = validateField('subjects', formData.subjectGrades);
 
     // Filter out empty errors
     const filteredErrors = Object.fromEntries(
@@ -293,17 +320,20 @@ export function TeacherModal({
                   ) : (
                     <div className="space-y-2">
                       {/* Selected subjects display */}
-                      {formData.subjects.length > 0 && (
+                      {formData.subjectGrades.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-2">
-                          {formData.subjects.map((subject) => (
+                          {formData.subjectGrades.map((subjectGrade) => (
                             <span
-                              key={subject}
+                              key={`${subjectGrade.subjectId}-${subjectGrade.grade}`}
                               className="inline-flex items-center px-2 py-1 text-xs font-medium bg-indigo-100 text-indigo-800 rounded-full"
                             >
-                              {subject}
+                              {subjectGrade.subjectName} (Grade {subjectGrade.grade})
                               <button
                                 type="button"
-                                onClick={() => handleSubjectToggle(subject)}
+                                onClick={() => {
+                                  const subject = subjects.find(s => s.id === subjectGrade.subjectId);
+                                  if (subject) handleSubjectToggle(subject);
+                                }}
                                 className="ml-1 text-indigo-600 hover:text-indigo-800"
                               >
                                 ×
@@ -322,16 +352,20 @@ export function TeacherModal({
                           >
                             <input
                               type="checkbox"
-                              checked={formData.subjects.includes(subject.name)}
-                              onChange={() => handleSubjectToggle(subject.name)}
+                              checked={formData.subjectGrades.some(sg => 
+                                sg.subjectId === subject.id && sg.grade === subject.grade
+                              )}
+                              onChange={() => handleSubjectToggle(subject)}
                               className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
                             />
-                            <span className="text-sm text-gray-700">{subject.name}</span>
+                            <span className="text-sm text-gray-700">
+                              {subject.name} (Grade {subject.grade})
+                            </span>
                           </label>
                         ))}
                       </div>
                       
-                      {formData.subjects.length === 0 && (
+                      {formData.subjectGrades.length === 0 && (
                         <div className="text-gray-400 text-sm">Select subjects this teacher will teach</div>
                       )}
                     </div>

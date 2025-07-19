@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { QuestionBank } from '@/models/questionBankSchema';
 import { questionBankService } from '@/apiservices/questionBankFirestoreService';
+import { teacherAccessBankService } from '@/apiservices/teacherAccessBankService';
 import { useTeacherAuth } from '@/hooks/useTeacherAuth';
 import TeacherLayout from '@/components/teacher/TeacherLayout';
 import { Button, Input, ConfirmDialog } from '@/components/ui';
@@ -54,10 +55,10 @@ export default function TeacherQuestionBanks() {
     'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'
   ];
 
-  // Fetch question banks for teacher's subjects
+  // Fetch question banks that the teacher has access to
   useEffect(() => {
     const fetchQuestionBanks = async () => {
-      if (!teacher?.subjects || teacher.subjects.length === 0) {
+      if (!teacher?.id) {
         setLoading(false);
         return;
       }
@@ -66,15 +67,19 @@ export default function TeacherQuestionBanks() {
         setLoading(true);
         setError(null);
         
-        // Fetch all question banks
-        const allBanks = await questionBankService.listQuestionBanks();
+        // Get question banks the teacher has access to through the access control system
+        const accessList = await teacherAccessBankService.getAccessibleQuestionBanks(teacher.id);
         
-        // Filter banks by teacher's subjects
-        const teacherBanks = allBanks.filter(bank => 
-          teacher.subjects.includes(bank.subjectName)
+        // Convert access list to question banks
+        const questionBankIds = accessList.map(access => access.questionBankId);
+        const questionBanksPromises = questionBankIds.map(id => 
+          questionBankService.getQuestionBank(id)
         );
         
-        setQuestionBanks(teacherBanks);
+        const questionBanksResults = await Promise.all(questionBanksPromises);
+        const validQuestionBanks = questionBanksResults.filter(bank => bank !== null) as QuestionBank[];
+        
+        setQuestionBanks(validQuestionBanks);
       } catch (err) {
         console.error('Error fetching question banks:', err);
         setError('Failed to load question banks');
@@ -84,7 +89,7 @@ export default function TeacherQuestionBanks() {
     };
 
     fetchQuestionBanks();
-  }, [teacher?.subjects]);
+  }, [teacher?.id]);
 
   // Filter question banks based on search, grade, and subject
   const filteredBanks = useMemo(() => {
@@ -98,8 +103,11 @@ export default function TeacherQuestionBanks() {
     });
   }, [questionBanks, searchTerm, selectedGrade, selectedSubject]);
 
-  // Get unique subjects from teacher's subjects
-  const availableSubjects = teacher?.subjects || [];
+  // Get unique subjects from accessible question banks
+  const availableSubjects = useMemo(() => {
+    const subjects = new Set(questionBanks.map(bank => bank.subjectName));
+    return Array.from(subjects).sort();
+  }, [questionBanks]);
 
   // Handle creating a new question bank
   const handleCreateBank = async (bankData: Omit<QuestionBank, 'id' | 'createdAt' | 'updatedAt'>) => {

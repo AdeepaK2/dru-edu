@@ -207,12 +207,29 @@ export default function TeacherManagement() {
   const filteredTeachers = useMemo(() => {
     if (!displayTeachers) return [];
     
-    return displayTeachers.filter(teacher =>
-      teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.phone.includes(searchTerm) ||
-      teacher.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    return displayTeachers.filter(teacher => {
+      const searchLower = searchTerm.toLowerCase();
+      
+      // Search in basic fields
+      const basicMatch = teacher.name.toLowerCase().includes(searchLower) ||
+        teacher.email.toLowerCase().includes(searchLower) ||
+        teacher.phone.includes(searchTerm) ||
+        teacher.id.toLowerCase().includes(searchLower);
+      
+      // Search in subject-grade combinations
+      const subjectGradeMatch = teacher.subjectGrades?.some(sg => 
+        sg.subjectName.toLowerCase().includes(searchLower) ||
+        sg.grade.toLowerCase().includes(searchLower) ||
+        `${sg.subjectName} grade ${sg.grade}`.toLowerCase().includes(searchLower)
+      ) || false;
+      
+      // Search in legacy subjects array (fallback)
+      const legacySubjectMatch = teacher.subjects?.some(subject => 
+        subject.toLowerCase().includes(searchLower)
+      ) || false;
+      
+      return basicMatch || subjectGradeMatch || legacySubjectMatch;
+    });
   }, [displayTeachers, searchTerm]);
 
   // Handle edit button click
@@ -342,9 +359,11 @@ export default function TeacherManagement() {
                     <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.phone}</div>
                   </td>                  <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
-                      {teacher.subjects && teacher.subjects.length > 0 
-                        ? teacher.subjects.join(', ') 
-                        : 'No subjects assigned'
+                      {teacher.subjectGrades && teacher.subjectGrades.length > 0 
+                        ? teacher.subjectGrades.map(sg => `${sg.subjectName} (Grade ${sg.grade})`).join(', ')
+                        : teacher.subjects && teacher.subjects.length > 0 
+                          ? teacher.subjects.join(', ')
+                          : 'No subjects assigned'
                       }
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.qualifications || 'N/A'}</div>

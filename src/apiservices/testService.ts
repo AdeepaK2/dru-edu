@@ -17,7 +17,7 @@ import {
   Timestamp,
   increment
 } from 'firebase/firestore';
-import { firestore } from '@/utils/firebase-client';
+import { firestore, auth } from '@/utils/firebase-client';
 import { 
   Test, 
   LiveTest, 
@@ -45,15 +45,20 @@ export class TestService {
   // Create a new test
   static async createTest(testData: Omit<Test, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
     try {
+      console.log('🔍 Creating test with data:', testData);
+      console.log('🔍 Current user auth state:', auth.currentUser);
+      
       const docRef = await addDoc(collection(firestore, this.COLLECTIONS.TESTS), {
         ...testData,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
+      
+      console.log('✅ Test created successfully with ID:', docRef.id);
       return docRef.id;
     } catch (error) {
-      console.error('Error creating test:', error);
-      throw new Error('Failed to create test');
+      console.error('❌ Error creating test:', error);
+      throw error; // Re-throw to preserve the original error
     }
   }
 

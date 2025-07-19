@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { QuestionBank, Question } from '@/models/questionBankSchema';
 import { questionBankService, questionService } from '@/apiservices/questionBankFirestoreService';
+import { teacherAccessBankService } from '@/apiservices/teacherAccessBankService';
 import { useTeacherAuth } from '@/hooks/useTeacherAuth';
 import TeacherLayout from '@/components/teacher/TeacherLayout';
 import { Button, Input, ConfirmDialog } from '@/components/ui';
@@ -74,14 +75,17 @@ export default function TeacherQuestionBankDetail() {
         
         console.log('🔍 Question bank loaded:', bank);
         
-        // Check if teacher has access to this question bank
-        console.log('🔍 Teacher subjects:', teacher?.subjects);
-        console.log('🔍 Question bank subject:', bank.subjectName);
-        console.log('🔍 Question bank data:', bank);
+        // Check if teacher has access to this question bank using proper access control
+        if (!teacher?.id) {
+          throw new Error('Teacher not authenticated');
+        }
         
-        // For now, allow all teachers and admins access to question banks
-        // TODO: Implement proper subject-based access control later
-        console.log('✅ Allowing access to question bank for teacher/admin');
+        const hasAccess = await teacherAccessBankService.hasAccess(teacher.id, bankId);
+        if (!hasAccess) {
+          throw new Error('You do not have access to this question bank');
+        }
+        
+        console.log('✅ Teacher has access to question bank');
         
         setQuestionBank(bank);
         
@@ -106,7 +110,7 @@ export default function TeacherQuestionBankDetail() {
     };
     
     loadData();
-  }, [bankId, teacher?.subjects]);
+  }, [bankId, teacher?.id]);
 
   // Filter questions based on search and filters
   const filteredQuestions = questions.filter(question => {
@@ -116,6 +120,42 @@ export default function TeacherQuestionBankDetail() {
     const matchesDifficulty = filterDifficulty === 'all' || question.difficultyLevel === filterDifficulty;
     
     return matchesSearch && matchesType && matchesDifficulty;
+  }).sort((a, b) => {
+    // Custom sorting function to order questions logically
+    // M1, M2, M3... then E1, E2, E3...
+    
+    // Extract the prefix (M or E) and number from titles like "M1", "E2"
+    const extractTitleInfo = (title: string) => {
+      const match = title.match(/^([ME])(\d+)$/);
+      if (match) {
+        return {
+          type: match[1], // 'M' or 'E'
+          number: parseInt(match[2], 10), // 1, 2, 3, etc.
+          isValid: true
+        };
+      }
+      return { type: '', number: 0, isValid: false };
+    };
+    
+    const aInfo = extractTitleInfo(a.title);
+    const bInfo = extractTitleInfo(b.title);
+    
+    // If both have valid format (M1, E2, etc.)
+    if (aInfo.isValid && bInfo.isValid) {
+      // First sort by type: M comes before E
+      if (aInfo.type !== bInfo.type) {
+        return aInfo.type === 'M' ? -1 : 1;
+      }
+      // Then sort by number within the same type
+      return aInfo.number - bInfo.number;
+    }
+    
+    // If only one has valid format, it comes first
+    if (aInfo.isValid) return -1;
+    if (bInfo.isValid) return 1;
+    
+    // Fallback: alphabetical sort for non-standard titles
+    return a.title.localeCompare(b.title);
   });
 
   // Handle creating a new question
@@ -125,6 +165,8 @@ export default function TeacherQuestionBankDetail() {
     setActionLoading('create');
     
     try {
+      console.log('🔍 Creating question with data:', questionData);
+      
       // Create the question
       const newQuestionId = await questionService.createQuestion(questionData);
       
@@ -134,13 +176,42 @@ export default function TeacherQuestionBankDetail() {
       // Get the new question and add to local state
       const newQuestion = await questionService.getQuestion(newQuestionId);
       if (newQuestion) {
-        setQuestions(prev => [newQuestion, ...prev]);
+        console.log('✅ New question created:', newQuestion);
+        setQuestions(prev => [...prev, newQuestion]); // Add to end instead of beginning
         
-        // Update question bank counts
-        const updatedBank = await questionBankService.getQuestionBank(bankId);
-        if (updatedBank) {
-          setQuestionBank(updatedBank);
-        }
+        // Update question bank counts locally first for immediate UI update
+        setQuestionBank(prev => {
+          if (!prev) return prev;
+          const updatedBank = { ...prev };
+          updatedBank.totalQuestions = (updatedBank.totalQuestions || 0) + 1;
+          
+          if (newQuestion.type === 'mcq') {
+            updatedBank.mcqCount = (updatedBank.mcqCount || 0) + 1;
+          } else {
+            updatedBank.essayCount = (updatedBank.essayCount || 0) + 1;
+          }
+          
+          console.log('🔄 Updated question bank counts locally:', {
+            total: updatedBank.totalQuestions,
+            mcq: updatedBank.mcqCount,
+            essay: updatedBank.essayCount
+          });
+          
+          return updatedBank;
+        });
+        
+        // Also fetch the updated bank from server to ensure consistency
+        setTimeout(async () => {
+          try {
+            const updatedBank = await questionBankService.getQuestionBank(bankId);
+            if (updatedBank) {
+              console.log('🔄 Fetched updated question bank from server:', updatedBank);
+              setQuestionBank(updatedBank);
+            }
+          } catch (error) {
+            console.error('Error fetching updated question bank:', error);
+          }
+        }, 500);
       }
       
       showToast('Question created successfully!', 'success');
@@ -421,7 +492,7 @@ export default function TeacherQuestionBankDetail() {
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-2">
                             <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                              Q{index + 1}
+                              Q{index + 1} ({question.title})
                             </span>
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               question.type === 'mcq' 
@@ -445,14 +516,32 @@ export default function TeacherQuestionBankDetail() {
                           </div>
                           
                           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                            {question.title}
+                            Question {index + 1}
                           </h3>
                           
-                          {question.content && (
-                            <p className="text-gray-600 dark:text-gray-400 mb-2">
-                              {question.content}
-                            </p>
-                          )}
+                          <div className="mb-2">
+                            {question.content && (
+                              <p className="text-gray-600 dark:text-gray-400 mb-2">
+                                {question.content}
+                              </p>
+                            )}
+                            
+                            {question.imageUrl && (
+                              <div className="mb-2">
+                                <img
+                                  src={question.imageUrl}
+                                  alt="Question"
+                                  className="max-w-md max-h-48 object-contain border rounded-lg"
+                                />
+                              </div>
+                            )}
+                            
+                            {!question.content && !question.imageUrl && (
+                              <p className="text-gray-500 dark:text-gray-400 italic">
+                                No question content or image provided
+                              </p>
+                            )}
+                          </div>
                           
                           {question.type === 'mcq' && 'options' in question && (
                             <div className="mt-2 space-y-1">
@@ -471,6 +560,59 @@ export default function TeacherQuestionBankDetail() {
                                   )}
                                 </div>
                               ))}
+                              
+                              {/* Show MCQ explanation */}
+                              {question.explanation && (
+                                <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded border-l-4 border-blue-400">
+                                  <h4 className="text-sm font-medium text-blue-800 dark:text-blue-300 mb-1">Explanation:</h4>
+                                  <p className="text-sm text-blue-700 dark:text-blue-400">{question.explanation}</p>
+                                  
+                                  {'explanationImageUrl' in question && question.explanationImageUrl && (
+                                    <div className="mt-2">
+                                      <img
+                                        src={question.explanationImageUrl}
+                                        alt="Explanation"
+                                        className="max-w-md max-h-32 object-contain border rounded"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          
+                          {question.type === 'essay' && (
+                            <div className="mt-2">
+                              {'suggestedAnswerContent' in question && question.suggestedAnswerContent && (
+                                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded border-l-4 border-purple-400">
+                                  <h4 className="text-sm font-medium text-purple-800 dark:text-purple-300 mb-1">Suggested Answer:</h4>
+                                  <p className="text-sm text-purple-700 dark:text-purple-400 whitespace-pre-wrap">{question.suggestedAnswerContent}</p>
+                                  
+                                  {'suggestedAnswerImageUrl' in question && question.suggestedAnswerImageUrl && (
+                                    <div className="mt-2">
+                                      <img
+                                        src={question.suggestedAnswerImageUrl}
+                                        alt="Suggested Answer"
+                                        className="max-w-md max-h-32 object-contain border rounded"
+                                      />
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {(!('suggestedAnswerContent' in question) || !question.suggestedAnswerContent) && 
+                               'suggestedAnswerImageUrl' in question && question.suggestedAnswerImageUrl && (
+                                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded border-l-4 border-purple-400">
+                                  <h4 className="text-sm font-medium text-purple-800 dark:text-purple-300 mb-1">Suggested Answer:</h4>
+                                  <div className="mt-2">
+                                    <img
+                                      src={question.suggestedAnswerImageUrl}
+                                      alt="Suggested Answer"
+                                      className="max-w-md max-h-32 object-contain border rounded"
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -512,7 +654,9 @@ export default function TeacherQuestionBankDetail() {
                 <div className="flex space-x-2">
                   <button
                     onClick={() => setQuestionType('mcq')}
+                    disabled={!!editingQuestion} // Disable when editing
                     className={`px-4 py-2 text-sm font-medium rounded-md ${
+                      editingQuestion ? 'bg-gray-200 text-gray-500 cursor-not-allowed' :
                       questionType === 'mcq'
                         ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -522,7 +666,9 @@ export default function TeacherQuestionBankDetail() {
                   </button>
                   <button
                     onClick={() => setQuestionType('essay')}
+                    disabled={!!editingQuestion} // Disable when editing
                     className={`px-4 py-2 text-sm font-medium rounded-md ${
+                      editingQuestion ? 'bg-gray-200 text-gray-500 cursor-not-allowed' :
                       questionType === 'essay'
                         ? 'bg-purple-100 dark:bg-purple-900/20 text-purple-800 dark:text-purple-300'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -543,7 +689,13 @@ export default function TeacherQuestionBankDetail() {
                   mcqCount: questionBank.mcqCount || 0,
                   essayCount: questionBank.essayCount || 0
                 }}
+                editingQuestion={editingQuestion}
+                onCancel={() => handleTabChange('view')}
               />
+              {/* Debug info */}
+              <div className="mt-4 p-2 bg-gray-100 rounded text-xs text-gray-600">
+                Debug: MCQ Count = {questionBank.mcqCount || 0}, Essay Count = {questionBank.essayCount || 0}
+              </div>
             </div>
           )}
         </div>

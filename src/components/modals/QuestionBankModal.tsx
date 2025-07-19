@@ -4,11 +4,9 @@ import { useState, useEffect } from 'react';
 import { Modal, Button } from '@/components/ui';
 import { QuestionBank } from '@/models/questionBankSchema';
 import { SubjectDocument } from '@/models/subjectSchema';
-import { Teacher } from '@/models/teacherSchema';
 import { ClassDocument } from '@/models/classSchema';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
-import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
 
 interface QuestionBankModalProps {
   isOpen: boolean;
@@ -39,22 +37,18 @@ export default function QuestionBankModal({
     totalQuestions: 0,
     mcqCount: 0,
     essayCount: 0,
-    assignedTeacherIds: [] as string[],
     assignedClassIds: [] as string[]
   });
 
   const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<ClassDocument[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
-  const [loadingTeachers, setLoadingTeachers] = useState(false);
   const [loadingClasses, setLoadingClasses] = useState(false);
 
-  // Fetch subjects, teachers, and classes when modal opens
+  // Fetch subjects and classes when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchSubjects();
-      fetchTeachers();
       fetchClasses();
     }
   }, [isOpen]);
@@ -68,17 +62,6 @@ export default function QuestionBankModal({
       console.error('Error fetching subjects:', error);
     } finally {
       setLoadingSubjects(false);
-    }
-  };
-  const fetchTeachers = async () => {
-    setLoadingTeachers(true);
-    try {
-      const teacherList = await TeacherFirestoreService.getAllTeachers();
-      setTeachers(teacherList);
-    } catch (error) {
-      console.error('Error fetching teachers:', error);
-    } finally {
-      setLoadingTeachers(false);
     }
   };
 
@@ -107,7 +90,6 @@ export default function QuestionBankModal({
         totalQuestions: initialData.totalQuestions || 0,
         mcqCount: initialData.mcqCount || 0,
         essayCount: initialData.essayCount || 0,
-        assignedTeacherIds: initialData.assignedTeacherIds || [],
         assignedClassIds: initialData.assignedClassIds || []
       });
     } else if (isOpen) {
@@ -122,7 +104,6 @@ export default function QuestionBankModal({
         totalQuestions: 0,
         mcqCount: 0,
         essayCount: 0,
-        assignedTeacherIds: [],
         assignedClassIds: []
       });
     }
@@ -145,15 +126,6 @@ export default function QuestionBankModal({
       subjectId: selectedSubjectId,
       subjectName: selectedSubject?.name || '',
       grade: selectedSubject?.grade || ''
-    }));
-  };
-
-  const handleTeacherAssignment = (teacherId: string) => {
-    setFormData(prev => ({
-      ...prev,
-      assignedTeacherIds: prev.assignedTeacherIds.includes(teacherId)
-        ? prev.assignedTeacherIds.filter(id => id !== teacherId)
-        : [...prev.assignedTeacherIds, teacherId]
     }));
   };
   
@@ -248,36 +220,6 @@ export default function QuestionBankModal({
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              Assign Teachers
-            </label>
-            {loadingTeachers ? (
-              <div className="text-sm text-gray-500">Loading teachers...</div>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
-                {teachers.length === 0 ? (
-                  <div className="text-sm text-gray-500">No teachers available</div>
-                ) : (
-                  teachers.map((teacher) => (
-                    <label key={teacher.id} className="flex items-center space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                      <input
-                        type="checkbox"
-                        checked={formData.assignedTeacherIds.includes(teacher.id)}
-                        onChange={() => handleTeacherAssignment(teacher.id)}
-                        className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-                      />
-                      <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-900">{teacher.name}</div>
-                        <div className="text-xs text-gray-500">{teacher.email} • {teacher.subject}</div>
-                      </div>
-                    </label>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-3">
               Assign to Classes (Optional)

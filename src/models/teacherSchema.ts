@@ -2,6 +2,13 @@
 import { z } from 'zod';
 import { Timestamp } from 'firebase/firestore';
 
+// Subject-grade association for teachers
+export const subjectGradeSchema = z.object({
+  subjectId: z.string(),
+  subjectName: z.string(),
+  grade: z.string(),
+});
+
 // Teacher validation schema for creation (simplified)
 export const teacherSchema = z.object({
   name: z.string().min(1, 'Teacher name is required'),
@@ -9,6 +16,7 @@ export const teacherSchema = z.object({
   phone: z.string().optional(),
   countryCode: z.string().default('+61'), // Default to Australia
   subjects: z.array(z.string()).min(1, 'At least one subject is required'),
+  subjectGrades: z.array(subjectGradeSchema).optional().default([]), // New field for subject-grade associations
   qualifications: z.string().optional(),
   bio: z.string().optional(),
   status: z.enum(['Active', 'On Leave', 'Inactive']).default('Active'),
@@ -20,6 +28,13 @@ export const teacherSchema = z.object({
 // Teacher update schema (all fields optional except id)
 export const teacherUpdateSchema = teacherSchema.partial();
 
+// Subject-grade association interface
+export interface SubjectGrade {
+  subjectId: string;
+  subjectName: string;
+  grade: string;
+}
+
 // Teacher model
 export interface Teacher {
   id: string;
@@ -28,6 +43,7 @@ export interface Teacher {
   phone: string;
   countryCode: string;
   subjects: string[];
+  subjectGrades?: SubjectGrade[]; // New field for subject-grade associations
   qualifications: string;
   bio?: string;
   status: 'Active' | 'On Leave' | 'Inactive';
@@ -47,6 +63,7 @@ export interface TeacherDocument {
   phone: string;
   countryCode: string;
   subjects: string[];
+  subjectGrades?: SubjectGrade[]; // New field for subject-grade associations
   qualifications: string;
   bio?: string;
   status: 'Active' | 'On Leave' | 'Inactive';
@@ -64,6 +81,7 @@ export interface TeacherDocument {
 // Type inference from schemas
 export type TeacherData = z.infer<typeof teacherSchema>;
 export type TeacherUpdateData = z.infer<typeof teacherUpdateSchema>;
+export type SubjectGradeData = z.infer<typeof subjectGradeSchema>;
 
 // Function to save teacher data (deprecated - use API route instead)
 export const saveTeacher = async (teacher: Partial<Teacher>): Promise<Teacher> => {

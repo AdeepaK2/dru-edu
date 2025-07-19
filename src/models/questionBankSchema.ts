@@ -70,8 +70,6 @@ export interface QuestionBank {
   grade?: string;
   // Question IDs contained in this bank
   questionIds: string[];
-  // Teacher assignments
-  assignedTeacherIds?: string[];
   // Class assignments (optional)
   assignedClassIds?: string[];
   // Quick stats
