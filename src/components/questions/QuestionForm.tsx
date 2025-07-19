@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button, Input, TextArea, Select } from '@/components/ui';
-import { Plus, Trash2, Upload, X, ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Upload, X, ImageIcon, AlertCircle } from 'lucide-react';
 import { Question, MCQQuestion, EssayQuestion, QuestionOption } from '@/models/questionBankSchema';
 import { LessonFirestoreService } from '@/apiservices/lessonFirestoreService';
 import { LessonDocument } from '@/models/lessonSchema';
@@ -85,7 +85,7 @@ export default function QuestionForm({
   const [loadingLessons, setLoadingLessons] = useState(false);
   
   // Image upload hook
-  const { uploadImage, isUploading: imageUploading } = useImageUpload();
+  const { uploadImage, isUploading: imageUploading, progress } = useImageUpload();
 
   // Auto-generate question number on mount
   useEffect(() => {
@@ -176,7 +176,7 @@ export default function QuestionForm({
   };
 
   const removeOption = (index: number) => {
-    if (formData.options.length <= 2) return; // Keep at least 2 options
+    if (formData.options.length <= 4) return; // Keep at least 4 options (A, B, C, D)
     
     const newOptions = formData.options.filter((_, i) => i !== index);
     setFormData(prev => ({
@@ -196,11 +196,8 @@ export default function QuestionForm({
 
     // MCQ specific validation
     if (questionType === 'mcq') {
-      // Check if at least some options have text (allow empty options)
-      const hasAnyOptionText = formData.options.some(option => option.text.trim());
-      if (!hasAnyOptionText) {
-        newErrors.options = 'At least one option must have text';
-      }
+      // Allow all options to be empty - just need A, B, C, D labels for selection
+      // No text content requirement for options
 
       // Check if exactly one option is correct
       const correctOptions = formData.options.filter(option => option.isCorrect);
@@ -249,7 +246,7 @@ export default function QuestionForm({
         questionData = {
           ...baseQuestionData,
           type: 'mcq',
-          options: formData.options.filter(option => option.text.trim() || option.isCorrect), // Keep options with text or if they're correct
+          options: formData.options, // Include all options (even empty ones)
           correctAnswer: formData.correctAnswer,
           explanation: formData.explanation.trim(),
           explanationImageUrl: formData.explanationImageUrl?.trim() || undefined
@@ -278,29 +275,47 @@ export default function QuestionForm({
   };  // Image upload handlers
   const handleQuestionImageUpload = async (file: File) => {
     try {
+      console.log('🔍 Starting question image upload:', file.name);
+      setErrors(prev => ({ ...prev, imageUrl: '' })); // Clear previous errors
+      
       const result = await uploadImage(file, { type: 'question' });
+      
       if (result.imageUrl) {
+        console.log('✅ Question image uploaded:', result.imageUrl);
         setFormData(prev => ({ ...prev, imageUrl: result.imageUrl }));
       }
+      
       if (result.error) {
+        console.error('❌ Question image upload error:', result.error);
         setErrors(prev => ({ ...prev, imageUrl: result.error! }));
       }
     } catch (error) {
-      console.error('Error uploading question image:', error);
+      console.error('❌ Unexpected question image upload error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown upload error';
+      setErrors(prev => ({ ...prev, imageUrl: errorMsg }));
     }
   };
 
   const handleExplanationImageUpload = async (file: File) => {
     try {
+      console.log('🔍 Starting explanation image upload:', file.name);
+      setErrors(prev => ({ ...prev, explanationImageUrl: '' })); // Clear previous errors
+      
       const result = await uploadImage(file, { type: 'explanation' });
+      
       if (result.imageUrl) {
+        console.log('✅ Explanation image uploaded:', result.imageUrl);
         setFormData(prev => ({ ...prev, explanationImageUrl: result.imageUrl }));
       }
+      
       if (result.error) {
+        console.error('❌ Explanation image upload error:', result.error);
         setErrors(prev => ({ ...prev, explanationImageUrl: result.error! }));
       }
     } catch (error) {
-      console.error('Error uploading explanation image:', error);
+      console.error('❌ Unexpected explanation image upload error:', error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown upload error';
+      setErrors(prev => ({ ...prev, explanationImageUrl: errorMsg }));
     }
   };
 
@@ -366,7 +381,10 @@ export default function QuestionForm({
                 accept="image/*"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) handleQuestionImageUpload(file);
+                  if (file) {
+                    console.log('📁 File selected:', file.name, file.size, file.type);
+                    handleQuestionImageUpload(file);
+                  }
                 }}
                 disabled={loading || imageUploading}
                 className="hidden"
@@ -374,7 +392,11 @@ export default function QuestionForm({
               />
               <label
                 htmlFor="question-image-upload"
-                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer disabled:bg-gray-400"
+                className={`flex items-center px-4 py-2 rounded-lg cursor-pointer transition-colors ${
+                  loading || imageUploading
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
               >
                 <Upload className="w-4 h-4 mr-2" />
                 {imageUploading ? 'Uploading...' : 'Upload Image'}
@@ -393,12 +415,32 @@ export default function QuestionForm({
                 </Button>
               )}
             </div>
+            
+            {/* Progress indicator */}
+            {imageUploading && (
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+            )}
+            
+            {/* Error display */}
+            {errors.imageUrl && (
+              <div className="flex items-center space-x-2 text-red-600">
+                <AlertCircle className="w-4 h-4" />
+                <p className="text-sm">{errors.imageUrl}</p>
+              </div>
+            )}
+            
             <p className="text-sm text-gray-500">
               {formData.content.trim() ? 
                 'Image can supplement the question text' : 
                 'Either question content or image is required'
               }
             </p>
+            
             {formData.imageUrl && (
               <div className="relative">
                 <img
@@ -408,11 +450,10 @@ export default function QuestionForm({
                 />
               </div>
             )}
-            {errors.imageUrl && (
-              <p className="text-red-600 text-sm">{errors.imageUrl}</p>
-            )}
           </div>
-        </div>        <div>
+        </div>
+
+        <div>
           <Select
             label="Difficulty Level"
             value={formData.difficultyLevel}
@@ -454,19 +495,24 @@ export default function QuestionForm({
       {questionType === 'mcq' && (
         <div className="space-y-6">
           <div>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-2">
               <h3 className="text-lg font-medium text-gray-900">Answer Options</h3>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={addOption}
-                disabled={loading || formData.options.length >= 6}
+                disabled={loading || formData.options.length >= 5}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Add Option
               </Button>
             </div>
+            
+            <p className="text-sm text-gray-600 mb-4">
+              Options A, B, C, D are always available. Text content is optional for all options.
+              You can add option E if needed.
+            </p>
             
             {errors.options && (
               <p className="text-red-600 text-sm mb-4">{errors.options}</p>
@@ -497,12 +543,12 @@ export default function QuestionForm({
                     <Input
                       value={option.text}
                       onChange={(e) => handleOptionChange(index, 'text', e.target.value)}
-                      placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                      placeholder={`Option ${String.fromCharCode(65 + index)} text (optional)`}
                       disabled={loading}
                     />
                   </div>
 
-                  {formData.options.length > 2 && (
+                  {formData.options.length > 4 && (
                     <Button
                       type="button"
                       variant="outline"

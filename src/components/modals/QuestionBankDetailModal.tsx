@@ -334,7 +334,7 @@ export default function QuestionBankDetailModal({
                               <span className="font-medium">
                                 {String.fromCharCode(65 + optionIndex)}.
                               </span>
-                              <span>{option.text}</span>
+                              <span>{option.text || `Option ${String.fromCharCode(65 + optionIndex)}`}</span>
                               {option.isCorrect && (
                                 <span className="text-green-600 text-sm">✓ Correct</span>
                               )}
