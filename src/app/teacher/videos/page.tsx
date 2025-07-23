@@ -54,6 +54,10 @@ export default function TeacherVideos() {
     const loadTeacherData = async () => {
       if (!teacher?.id) return;
       
+      console.log('🔍 Teacher object in videos page:', teacher);
+      console.log('🔍 Teacher ID:', teacher.id);
+      console.log('🔍 Teacher subjects:', teacher.subjects);
+      
       setLoading(true);
       setError(null);
       
@@ -64,13 +68,59 @@ export default function TeacherVideos() {
           SubjectFirestoreService.getAllSubjects()
         ]);
         
-        // Filter subjects for teacher
-        const subjects = allSubjects.filter(subject => 
-          teacher.subjects?.includes(subject.name)
-        );
+        console.log('🔍 Teacher subject debugging:');
+        console.log('🔍 Teacher subjects from auth:', teacher.subjects);
+        console.log('🔍 All subjects from database:', allSubjects);
+        console.log('🔍 Classes loaded:', classes);
         
-        setTeacherClasses(classes);
-        setTeacherSubjects(subjects);
+        // Filter subjects for teacher - try multiple approaches
+        let subjects: any[] = [];
+        
+        // Approach 1: Use teacher.subjects array (if available)
+        if (teacher.subjects && teacher.subjects.length > 0) {
+          subjects = allSubjects.filter(subject => 
+            teacher.subjects?.includes(subject.name)
+          );
+          console.log('🔍 Method 1 - Filtered subjects by teacher.subjects:', subjects);
+        }
+        
+        // Approach 2: If no subjects from teacher.subjects, derive from classes
+        if (subjects.length === 0 && classes.length > 0) {
+          const subjectNamesFromClasses = [...new Set(classes.map(cls => cls.subject))];
+          subjects = allSubjects.filter(subject => 
+            subjectNamesFromClasses.includes(subject.name)
+          );
+          console.log('🔍 Method 2 - Filtered subjects from classes:', subjects);
+          console.log('🔍 Subject names from classes:', subjectNamesFromClasses);
+        }
+        
+        // Approach 3: If still no subjects, give all subjects (fallback)
+        if (subjects.length === 0) {
+          console.log('🔍 Method 3 - Using all subjects as fallback');
+          subjects = allSubjects;
+        }
+        
+        // Convert subjects to the format expected by the modal (with grade)
+        const formattedSubjects = subjects.map(subject => ({
+          id: subject.id,
+          name: `${subject.name} Grade ${subject.grade}`, // Include grade in display name
+          grade: subject.grade // Keep grade separate for reference
+        }));
+        
+        // Convert classes to the format expected by the modal
+        const formattedClasses = classes.map(cls => ({
+          id: cls.id,
+          name: cls.name,
+          subjectId: cls.subjectId
+        }));
+        
+        console.log('🔍 Final subjects for teacher:', subjects);
+        console.log('🔍 Formatted subjects for modal:', formattedSubjects);
+        console.log('🔍 Original classes:', classes);
+        console.log('🔍 Formatted classes for modal:', formattedClasses);
+        
+        setTeacherClasses(formattedClasses); // Use formatted classes
+        setTeacherSubjects(formattedSubjects); // Use formatted subjects instead
         
         // Load teacher's videos
         const teacherVideos = await VideoFirestoreService.getVideosByTeacher(teacher.id);

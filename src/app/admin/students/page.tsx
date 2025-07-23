@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { UserPlus, Users, Search, Edit2, Trash2, XCircle } from 'lucide-react';
+import { UserPlus, Users, Search, Edit2, Trash2, XCircle, UserCheck } from 'lucide-react';
 import { Student, StudentDocument } from '@/models/studentSchema';
 import { firestore } from '@/utils/firebase-client';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { Button, ConfirmDialog, Modal, Input, Select } from '@/components/ui';
 import StudentModal from '@/components/modals/StudentModal';
+import AssignStudentToClassModal from '@/components/modals/AssignStudentToClassModal';
 import { useCachedData } from '@/hooks/useAdminCache';
 
 export default function StudentsManagement() {
@@ -17,6 +18,8 @@ export default function StudentsManagement() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<StudentDocument | null>(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assigningStudent, setAssigningStudent] = useState<StudentDocument | null>(null);
   
   // Use cached data hook for efficient data management
   const { data: students = [], loading, error, refetch } = useCachedData<StudentDocument[]>(
@@ -137,12 +140,11 @@ export default function StudentsManagement() {
     setActionLoading('delete');
     
     try {
-      const response = await fetch('/api/student', {
+      const response = await fetch(`/api/student?id=${studentToDelete.id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ id: studentToDelete.id }),
       });
       
       if (!response.ok) {
@@ -183,6 +185,11 @@ export default function StudentsManagement() {
   const handleDeleteClick = (student: StudentDocument) => {
     setStudentToDelete(student);
     setShowDeleteConfirm(true);
+  };
+
+  const handleAssignClick = (student: StudentDocument) => {
+    setAssigningStudent(student);
+    setShowAssignModal(true);
   };
 
   if (loading) {
@@ -326,6 +333,16 @@ export default function StudentsManagement() {
                       <Button
                         variant="outline"
                         size="sm"
+                        onClick={() => handleAssignClick(student)}
+                        disabled={actionLoading === 'assign'}
+                        className="text-blue-600 hover:text-blue-700"
+                        title="Assign to Class"
+                      >
+                        <UserCheck className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
                         onClick={() => handleEditClick(student)}
                         disabled={actionLoading === 'update'}
                       >
@@ -400,6 +417,20 @@ export default function StudentsManagement() {
           confirmText="Delete"
           cancelText="Cancel"
           variant="danger"
+        />
+      )}
+
+      {/* Assign Student to Class Modal */}
+      {showAssignModal && assigningStudent && (
+        <AssignStudentToClassModal
+          isOpen={showAssignModal}
+          onClose={() => {
+            setShowAssignModal(false);
+            setAssigningStudent(null);
+          }}
+          student={assigningStudent}
+          onSuccess={showSuccess}
+          onError={showError}
         />
       )}
     </div>

@@ -12,6 +12,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Check if the path is a student route (but not login or home)
+  if (pathname.startsWith('/student') && 
+      !pathname.startsWith('/student/login') && 
+      pathname !== '/student') {
+    // Let the client-side StudentAuthGuard handle the auth check
+    return NextResponse.next();
+  }
+
   return NextResponse.next();
 }
 

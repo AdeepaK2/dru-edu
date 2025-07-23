@@ -21,7 +21,7 @@ interface TeacherVideoUploadModalProps {
   onSuccess: () => void;
   teacherId: string;
   teacherName: string;
-  availableSubjects: Array<{ id: string; name: string; }>;
+  availableSubjects: Array<{ id: string; name: string; grade?: string; }>;
   availableClasses: Array<{ id: string; name: string; subjectId: string; }>;
 }
 
@@ -34,6 +34,18 @@ export default function TeacherVideoUploadModal({
   availableSubjects,
   availableClasses
 }: TeacherVideoUploadModalProps) {
+  
+  // Debug props
+  useEffect(() => {
+    if (isOpen) {
+      console.log('🔍 VideoUploadModal Debug:');
+      console.log('🔍 Available subjects:', availableSubjects);
+      console.log('🔍 Available classes:', availableClasses);
+      console.log('🔍 Teacher ID:', teacherId);
+      console.log('🔍 Teacher name:', teacherName);
+    }
+  }, [isOpen, availableSubjects, availableClasses, teacherId, teacherName]);
+  
   const [formData, setFormData] = useState({
     title: '',
     description: '',
