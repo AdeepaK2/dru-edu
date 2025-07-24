@@ -82,6 +82,11 @@ export interface BaseTest {
   description?: string;
   instructions?: string;
   
+  // Test numbering (NEW)
+  testNumber?: number; // Sequential number within class/subject
+  displayNumber?: string; // Formatted display string (e.g., "Math Test #5")
+  numberAssignmentId?: string; // Reference to TestNumberAssignment
+  
   // Ownership and assignment
   teacherId: string;
   teacherName: string;

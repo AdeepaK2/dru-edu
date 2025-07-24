@@ -53,8 +53,34 @@ export default function StudentTestDashboard() {
     }
   };
 
-  const formatDateTime = (timestamp: Timestamp) => {
-    const date = timestamp.toDate();
+  const formatDateTime = (timestamp: any) => {
+    let date: Date;
+    
+    // Handle Firestore Timestamp
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      date = timestamp.toDate();
+    }
+    // Handle plain Date object
+    else if (timestamp instanceof Date) {
+      date = timestamp;
+    }
+    // Handle number (milliseconds)
+    else if (typeof timestamp === 'number') {
+      date = new Date(timestamp);
+    }
+    // Handle Firestore Timestamp object structure
+    else if (timestamp && timestamp.seconds) {
+      date = new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000);
+    }
+    // Handle string
+    else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    }
+    // Fallback
+    else {
+      date = new Date();
+    }
+    
     return date.toLocaleString('en-AU', {
       timeZone: 'Australia/Melbourne',
       year: 'numeric',
@@ -65,9 +91,25 @@ export default function StudentTestDashboard() {
     });
   };
 
-  const getTimeUntil = (timestamp: Timestamp) => {
+  const getTimeUntil = (timestamp: any) => {
     const now = new Date();
-    const target = timestamp.toDate();
+    let target: Date;
+    
+    // Handle different timestamp formats
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      target = timestamp.toDate();
+    } else if (timestamp instanceof Date) {
+      target = timestamp;
+    } else if (typeof timestamp === 'number') {
+      target = new Date(timestamp);
+    } else if (timestamp && timestamp.seconds) {
+      target = new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000);
+    } else if (typeof timestamp === 'string') {
+      target = new Date(timestamp);
+    } else {
+      return 'Available now';
+    }
+    
     const diff = target.getTime() - now.getTime();
     
     if (diff <= 0) return 'Available now';

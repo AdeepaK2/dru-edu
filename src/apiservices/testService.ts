@@ -48,8 +48,45 @@ export class TestService {
       console.log('🔍 Creating test with data:', testData);
       console.log('🔍 Current user auth state:', auth.currentUser);
       
-      const docRef = await addDoc(collection(firestore, this.COLLECTIONS.TESTS), {
+      // Convert questions to TestQuestion format if they're not already converted
+      let processedQuestions = testData.questions || [];
+      
+      // Check if questions need conversion (if they have the Question format instead of TestQuestion format)
+      if (processedQuestions.length > 0) {
+        const firstQuestion = processedQuestions[0];
+        console.log('🔍 First question structure:', firstQuestion);
+        
+        // If the question has 'title' and 'createdAt' (Question format) but not 'questionId' (TestQuestion format), it needs conversion
+        if (firstQuestion && 'title' in firstQuestion && 'createdAt' in firstQuestion && !('questionId' in firstQuestion)) {
+          console.log('🔍 Converting questions from Question format to TestQuestion format');
+          processedQuestions = processedQuestions.map((question, index) => 
+            this.convertToTestQuestion(question as unknown as Question, index + 1)
+          );
+        } else {
+          console.log('🔍 Questions already in TestQuestion format, no conversion needed');
+        }
+      }
+      
+      const testDataWithConvertedQuestions = {
         ...testData,
+        questions: processedQuestions
+      };
+      
+      // Debug the final test data to find undefined values
+      console.log('🔍 Final test data before Firebase:', {
+        testDataKeys: Object.keys(testDataWithConvertedQuestions),
+        questionsCount: testDataWithConvertedQuestions.questions?.length,
+        firstQuestionKeys: testDataWithConvertedQuestions.questions?.[0] ? Object.keys(testDataWithConvertedQuestions.questions[0]) : null,
+        firstQuestionValues: testDataWithConvertedQuestions.questions?.[0] ? Object.entries(testDataWithConvertedQuestions.questions[0]).filter(([key, value]) => value === undefined) : null
+      });
+      
+      // Clean the test data to remove undefined values
+      const cleanedTestData = this.removeUndefinedFields(testDataWithConvertedQuestions);
+      
+      console.log('🧹 Cleaned test data before Firebase:', cleanedTestData);
+      
+      const docRef = await addDoc(collection(firestore, this.COLLECTIONS.TESTS), {
+        ...cleanedTestData,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now()
       });
@@ -58,6 +95,13 @@ export class TestService {
       return docRef.id;
     } catch (error) {
       console.error('❌ Error creating test:', error);
+      
+      // More detailed error logging
+      if (error instanceof Error) {
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
+      }
+      
       throw error; // Re-throw to preserve the original error
     }
   }
@@ -217,32 +261,114 @@ export class TestService {
 
   // Convert Question to TestQuestion
   private static convertToTestQuestion(question: Question, order: number): TestQuestion {
+    // Debug the incoming question structure first
+    console.log('🔍 INCOMING QUESTION DEBUG:', {
+      questionId: question.id,
+      questionTitle: question.title,
+      questionType: question.type,
+      fullQuestionObject: question,
+      optionsStructure: question.type === 'mcq' ? (question as any).options : null
+    });
+
     const testQuestion: TestQuestion = {
+      id: question.id, // Add the question ID for easy reference
       questionId: question.id,
       questionType: question.type,
-      points: question.points,
+      type: question.type, // for backward compatibility
+      points: question.points || 1, // Default to 1 if undefined
+      marks: question.points || 1, // for backward compatibility
       order,
+      questionText: question.title || '',
+      content: question.content || '',
+      imageUrl: question.imageUrl || undefined,
+      difficultyLevel: question.difficultyLevel || 'medium',
+      topic: question.topic || '',
       questionData: {
-        title: question.title,
-        content: question.content,
-        imageUrl: question.imageUrl
+        title: question.title || '',
+        content: question.content || '',
+        imageUrl: question.imageUrl || undefined
       }
     };
 
     if (question.type === 'mcq') {
       const mcq = question as MCQQuestion;
-      if (testQuestion.questionData) {
-        testQuestion.questionData.options = mcq.options.map(opt => ({
-          id: opt.id,
+      
+      // Store options as array of strings for backward compatibility
+      testQuestion.options = mcq.options?.map(opt => opt.text) || [];
+      
+      // Find and store the correct option index
+      const correctOptionIndex = mcq.options?.findIndex(opt => opt.isCorrect) || -1;
+      
+      // Debug logging to see what's happening
+      console.log('🔍 Converting MCQ Question:', {
+        questionId: question.id,
+        questionTitle: question.title,
+        options: mcq.options?.map((opt, idx) => ({
+          index: idx,
           text: opt.text,
-          imageUrl: opt.imageUrl
-        }));
-        testQuestion.questionData.explanation = mcq.explanation;
-        testQuestion.questionData.explanationImageUrl = mcq.explanationImageUrl;
+          isCorrect: opt.isCorrect
+        })) || [],
+        foundCorrectIndex: correctOptionIndex,
+        fallbackToZero: correctOptionIndex < 0
+      });
+      
+      testQuestion.correctOption = correctOptionIndex >= 0 ? correctOptionIndex : 0;
+      
+      // Store explanation - use undefined instead of null for optional fields
+      testQuestion.explanation = mcq.explanation || undefined;
+      testQuestion.explanationImageUrl = mcq.explanationImageUrl || undefined;
+      
+      // Also store in questionData for detailed access
+      if (testQuestion.questionData) {
+        testQuestion.questionData.options = mcq.options?.map(opt => ({
+          id: opt.id || '',
+          text: opt.text || '',
+          imageUrl: opt.imageUrl || undefined
+        })) || [];
+        testQuestion.questionData.explanation = mcq.explanation || undefined;
+        testQuestion.questionData.explanationImageUrl = mcq.explanationImageUrl || undefined;
       }
     }
 
-    return testQuestion;
+    // Remove any undefined values from the final object to prevent Firebase errors
+    const cleanTestQuestion = this.removeUndefinedFields(testQuestion);
+
+    console.log('🧹 Converted test question (cleaned):', cleanTestQuestion);
+    
+    return cleanTestQuestion;
+  }
+
+  // Helper method to remove undefined fields recursively while preserving Firestore objects
+  private static removeUndefinedFields(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return null;
+    }
+    
+    // Preserve Firestore Timestamp objects
+    if (obj && typeof obj === 'object' && obj.constructor && obj.constructor.name === 'Timestamp') {
+      return obj;
+    }
+    
+    // Preserve other Firestore objects (like DocumentReference, GeoPoint, etc.)
+    if (obj && typeof obj === 'object' && obj._delegate) {
+      return obj;
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.removeUndefinedFields(item)).filter(item => item !== undefined);
+    }
+    
+    if (typeof obj === 'object') {
+      const cleaned: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined) {
+          cleaned[key] = this.removeUndefinedFields(value);
+        }
+      }
+      return cleaned;
+    }
+    
+    return obj;
   }
 
   // Utility function to shuffle array
@@ -395,34 +521,35 @@ export class TestService {
       let totalMcqMarks = 0;
       let essayMarks = 0; // Will be updated later by teacher review
 
-      // Get question details for marking
-      const questionIds = test.questions.map(q => q.questionId);
-      const questionsQuery = query(
-        collection(firestore, 'questions'),
-        where('id', 'in', questionIds)
-      );
-      const questionsSnapshot = await getDocs(questionsQuery);
-      const questionsMap = new Map<string, Question>();
-      
-      questionsSnapshot.docs.forEach(doc => {
-        questionsMap.set(doc.id, { id: doc.id, ...doc.data() } as Question);
+      // Calculate MCQ scores using test questions (which contain correct answers)
+      const testQuestionsMap = new Map<string, TestQuestion>();
+      test.questions.forEach(q => {
+        testQuestionsMap.set(q.questionId, q);
       });
 
-      // Calculate MCQ scores
       for (const answer of attempt.answers) {
-        const question = questionsMap.get(answer.questionId);
-        if (!question) continue;
+        const testQuestion = testQuestionsMap.get(answer.questionId);
+        if (!testQuestion) continue;
 
-        if (question.type === 'mcq') {
-          const mcqQuestion = question as MCQQuestion;
+        if (testQuestion.questionType === 'mcq') {
           const mcqAnswer = answer as MCQAnswer;
-          const correctOption = mcqQuestion.options.find(opt => opt.isCorrect);
           
-          if (correctOption && mcqAnswer.selectedOption === correctOption.id) {
-            mcqCorrect++;
-            totalMcqMarks += question.points;
-          } else {
-            mcqWrong++;
+          // Check if answer is correct using stored correct option index
+          if (testQuestion.correctOption !== undefined && 
+              testQuestion.options && 
+              mcqAnswer.selectedOption !== undefined) {
+            
+            // Convert selectedOption (which should be an index) to match correctOption
+            const selectedIndex = typeof mcqAnswer.selectedOption === 'number' 
+              ? mcqAnswer.selectedOption 
+              : parseInt(mcqAnswer.selectedOption.toString());
+            
+            if (selectedIndex === testQuestion.correctOption) {
+              mcqCorrect++;
+              totalMcqMarks += testQuestion.points;
+            } else {
+              mcqWrong++;
+            }
           }
         }
       }

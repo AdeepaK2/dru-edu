@@ -1,0 +1,814 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { Clock, Calendar, AlertCircle, FileText, CheckCircle, Play, ArrowRight, BookOpen, Filter, Info } from 'lucide-react';
+import { useStudentAuth } from '@/hooks/useStudentAuth';
+import { Button, Input, Select } from '@/components/ui';
+import { TestService } from '@/apiservices/testService';
+import { Timestamp } from 'firebase/firestore';
+import { Test, LiveTest, FlexibleTest } from '@/models/testSchema';
+import { StudentEnrollment } from '@/models/studentEnrollmentSchema';
+
+// Import student layout from other components or use a local version for now
+const StudentLayout = ({ children }: { children: React.ReactNode }) => children;
+
+export default function StudentTests() {
+  const { student, loading: authLoading } = useStudentAuth();
+  const router = useRouter();
+  
+  // States
+  const [tests, setTests] = useState<Test[]>([]);
+  const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Fetch student data
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    const initializeData = async () => {
+      if (!authLoading && student) {
+        // Load data and get unsubscribe function
+        unsubscribe = await loadStudentData();
+        
+        // Set up auto-refresh every 5 minutes to update enrollment data
+        // (tests will update in real-time via the listener)
+        intervalId = setInterval(() => {
+          console.log("🔄 Refreshing enrollment data...");
+          loadEnrollments();
+        }, 300000); // Refresh every 5 minutes
+      }
+    };
+    
+    initializeData();
+    
+    // Cleanup function
+    return () => {
+      // Clear the interval
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+      
+      // Unsubscribe from Firestore listener
+      if (unsubscribe) {
+        console.log("🛑 Unsubscribing from test listener");
+        unsubscribe();
+      }
+    };
+  }, [student, authLoading]);
+
+  // Function to load enrollments
+  const loadEnrollments = async () => {
+    try {
+      console.log('🔍 Loading enrollments for student:', student?.id);
+      
+      // Import service
+      const { getEnrollmentsByStudent } = await import('@/services/studentEnrollmentService');
+      
+      // Get student enrollments using the service
+      const enrollmentsData = await getEnrollmentsByStudent(student?.id || '');
+      
+      setEnrollments(enrollmentsData);
+      console.log('✅ Loaded enrollments:', enrollmentsData.length);
+      return enrollmentsData;
+    } catch (error) {
+      console.error('Error loading enrollments:', error);
+      setError('Failed to load enrollment data. Please refresh the page.');
+      return [];
+    }
+  };
+  
+  // Function to set up test listener
+  const setupTestListener = async (classIds: string[]) => {
+    try {
+      // Import Firestore functions properly with await import
+      const { collection, query, where, onSnapshot } = await import('firebase/firestore');
+      const { firestore } = await import('@/utils/firebase-client');
+      
+      console.log('🔄 Firestore initialized:', !!firestore);
+      
+      // Create tests query
+      const testsCollection = collection(firestore, 'tests');
+      console.log('🔄 Tests collection reference created:', !!testsCollection);
+      
+      const testsQuery = query(
+        testsCollection,
+        where('classIds', 'array-contains-any', classIds)
+      );
+      console.log('🔄 Tests query created with classes:', classIds);
+      
+      console.log('🔄 Setting up real-time test listener for classes:', classIds);
+      
+      // Set up real-time listener
+      return onSnapshot(testsQuery, (snapshot: any) => {
+        console.log('📥 Received snapshot with', snapshot.size, 'documents');
+        const testsData: Test[] = [];
+        
+        snapshot.forEach((doc: any) => {
+          const testData = { id: doc.id, ...doc.data() } as Test;
+          console.log('📄 Test document:', doc.id, testData.title);
+          testsData.push(testData);
+        });
+        
+        setTests(testsData);
+        setLoading(false);
+        console.log('✅ Loaded tests (real-time):', testsData.length);
+      }, (error: any) => {
+        console.error('Error in tests snapshot listener:', error);
+        setError('Failed to listen for test updates. Please refresh the page.');
+        setLoading(false);
+      });
+    } catch (error) {
+      console.error('Error setting up test listener:', error);
+      
+      // More detailed error logging
+      if (error instanceof Error) {
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+      }
+      
+      setError('Failed to load tests. Please try again.');
+      setLoading(false);
+      return () => {}; // Return empty function if setup fails
+    }
+  };
+
+  // Main function to load all student data
+  const loadStudentData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Load enrollments first
+      const enrollmentsData = await loadEnrollments();
+      
+      if (enrollmentsData.length === 0) {
+        setLoading(false);
+        return null; // No enrollments, no need to set up test listener
+      }
+      
+      // Get class IDs from enrollments
+      const classIds = enrollmentsData.map((enrollment: StudentEnrollment) => enrollment.classId);
+      
+      // Set up test listener (await it since it's now async)
+      return await setupTestListener(classIds);
+    } catch (error) {
+      console.error('Error loading student data:', error);
+      setError('Failed to load data. Please refresh the page.');
+      setLoading(false);
+      return null;
+    }
+  };
+
+  // Get unique subjects from enrollments
+  const subjects = useMemo(() => {
+    if (!enrollments || enrollments.length === 0) return [];
+    
+    const uniqueSubjects = Array.from(
+      new Set(enrollments.map((enrollment) => enrollment.subject))
+    );
+    
+    return uniqueSubjects.map((subject, index) => ({
+      id: `subject-${index}`, 
+      name: subject
+    }));
+  }, [enrollments]);
+
+  // Format date and time - handles both Firestore Timestamp and plain objects
+  const formatDateTime = (timestamp: any) => {
+    let date: Date;
+    
+    try {
+      // Check if it's a proper Firestore Timestamp with toDate method
+      if (timestamp && typeof timestamp.toDate === 'function') {
+        date = timestamp.toDate();
+      }
+      // Check if it's a plain object with seconds property (serialized Timestamp)
+      else if (timestamp && typeof timestamp.seconds === 'number') {
+        date = new Date(timestamp.seconds * 1000);
+      }
+      // Check if it's already a Date object
+      else if (timestamp instanceof Date) {
+        date = timestamp;
+      }
+      // Check if it's a string that can be parsed
+      else if (typeof timestamp === 'string') {
+        date = new Date(timestamp);
+      }
+      // Fallback to current date if timestamp is invalid
+      else {
+        console.warn('Invalid timestamp format:', timestamp);
+        date = new Date();
+      }
+    } catch (error) {
+      console.error('Error formatting timestamp:', error, timestamp);
+      date = new Date(); // Fallback to current date
+    }
+    
+    return date.toLocaleString('en-AU', {
+      timeZone: 'Australia/Melbourne',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Get test status and related info
+  const getTestStatus = (test: Test) => {
+    const now = Date.now() / 1000; // Current time in seconds
+    
+    if (test.type === 'live') {
+      const liveTest = test as LiveTest;
+      
+      // Handle different timestamp formats
+      const getSeconds = (timestamp: any): number => {
+        if (timestamp && typeof timestamp.seconds === 'number') {
+          return timestamp.seconds;
+        } else if (timestamp && typeof timestamp.toDate === 'function') {
+          return timestamp.toDate().getTime() / 1000;
+        } else if (timestamp instanceof Date) {
+          return timestamp.getTime() / 1000;
+        } else if (typeof timestamp === 'string') {
+          return new Date(timestamp).getTime() / 1000;
+        }
+        return 0;
+      };
+      
+      const joinTimeSeconds = getSeconds(liveTest.studentJoinTime);
+      const endTimeSeconds = getSeconds(liveTest.actualEndTime);
+      
+      if (now < joinTimeSeconds) {
+        return { status: 'upcoming', color: 'blue', text: 'Upcoming' };
+      } else if (now >= joinTimeSeconds && now <= endTimeSeconds) {
+        return { status: 'live', color: 'green', text: 'Live Now' };
+      } else {
+        return { status: 'completed', color: 'gray', text: 'Completed' };
+      }
+    } else {
+      const flexTest = test as FlexibleTest;
+      
+      // Handle different timestamp formats
+      const getSeconds = (timestamp: any): number => {
+        if (timestamp && typeof timestamp.seconds === 'number') {
+          return timestamp.seconds;
+        } else if (timestamp && typeof timestamp.toDate === 'function') {
+          return timestamp.toDate().getTime() / 1000;
+        } else if (timestamp instanceof Date) {
+          return timestamp.getTime() / 1000;
+        } else if (typeof timestamp === 'string') {
+          return new Date(timestamp).getTime() / 1000;
+        }
+        return 0;
+      };
+      
+      const fromSeconds = getSeconds(flexTest.availableFrom);
+      const toSeconds = getSeconds(flexTest.availableTo);
+      
+      if (now < fromSeconds) {
+        return { status: 'upcoming', color: 'blue', text: 'Upcoming' };
+      } else if (now >= fromSeconds && now <= toSeconds) {
+        return { status: 'active', color: 'green', text: 'Available' };
+      } else {
+        return { status: 'completed', color: 'gray', text: 'Completed' };
+      }
+    }
+  };
+
+  // Handle start test
+  const handleStartTest = (testId: string) => {
+    router.push(`/student/test/${testId}`);
+  };
+
+  // Filter tests based on subject and search term
+  const filteredTests = useMemo(() => {
+    if (!tests) return [];
+    
+    return tests.filter(test => {
+      const matchesSubject = selectedSubjectId === 'all' || 
+        test.classIds.some(classId => {
+          const enrollment = enrollments.find(e => e.classId === classId);
+          if (!enrollment) return false;
+          
+          // Find subject ID from the enrollment
+          const subjectName = enrollment.subject;
+          const subject = subjects.find(s => s.name === subjectName);
+          
+          return subject?.id === selectedSubjectId;
+        });
+      
+      const matchesSearch = 
+        test.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        test.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        false;
+      
+      return matchesSubject && (searchTerm ? matchesSearch : true);
+    });
+  }, [tests, enrollments, selectedSubjectId, searchTerm, subjects]);
+
+  // Group tests by status
+  const groupedTests = useMemo(() => {
+    const grouped = {
+      live: [] as Test[],
+      upcoming: [] as Test[],
+      available: [] as Test[],
+      completed: [] as Test[],
+    };
+    
+    filteredTests.forEach(test => {
+      const status = getTestStatus(test);
+      
+      if (status.status === 'live') {
+        grouped.live.push(test);
+      } else if (status.status === 'upcoming') {
+        grouped.upcoming.push(test);
+      } else if (status.status === 'active') {
+        grouped.available.push(test);
+      } else {
+        grouped.completed.push(test);
+      }
+    });
+    
+    return grouped;
+  }, [filteredTests]);
+
+  // No enrollments message
+  if (!authLoading && !loading && (!enrollments || enrollments.length === 0)) {
+    return (
+      <StudentLayout>
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Tests & Quizzes
+            </h1>
+            <p className="text-gray-600 dark:text-gray-300">
+              View and take tests assigned to your classes
+            </p>
+          </div>
+          
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
+            <AlertCircle className="mx-auto h-12 w-12 text-orange-500 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              No Classes Enrolled
+            </h2>
+            <p className="text-gray-600 dark:text-gray-300 mb-6">
+              You are not enrolled in any classes yet. Please contact your administrator or teacher.
+            </p>
+            <Button 
+              onClick={() => router.push('/student/dashboard')}
+              className="inline-flex items-center"
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              Return to Dashboard
+            </Button>
+          </div>
+        </div>
+      </StudentLayout>
+    );
+  }
+
+  // Loading state
+  if (authLoading || loading) {
+    return (
+      <StudentLayout>
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div className="animate-pulse space-y-4">
+              <div className="h-8 bg-gray-300 dark:bg-gray-600 rounded w-1/4"></div>
+              <div className="h-4 bg-gray-300 dark:bg-gray-600 rounded w-1/2"></div>
+            </div>
+          </div>
+          
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <div className="animate-pulse space-y-6">
+              <div className="h-12 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-24 bg-gray-300 dark:bg-gray-600 rounded w-full"></div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </StudentLayout>
+    );
+  }
+
+  return (
+    <StudentLayout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+            Tests & Quizzes
+          </h1>
+          <p className="text-gray-600 dark:text-gray-300">
+            View and take tests assigned to your classes
+          </p>
+          <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Enrolled in {enrollments?.length || 0} class{enrollments?.length !== 1 ? 'es' : ''}
+          </div>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+            <div className="flex">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error</h3>
+                <p className="mt-1 text-sm text-red-700 dark:text-red-300">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Controls */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                type="text"
+                placeholder="Search tests..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Subject Filter */}
+            <div className="flex-shrink-0 min-w-[200px]">
+              <Select
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                className="w-full"
+                options={[
+                  { value: 'all', label: 'All Subjects' },
+                  ...subjects.map((subject) => ({
+                    value: subject.id,
+                    label: subject.name
+                  }))
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* Test Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-md">
+              <div className="flex items-center">
+                <Play className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Live Tests</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{groupedTests.live.length}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-md">
+              <div className="flex items-center">
+                <FileText className="h-5 w-5 text-green-600 dark:text-green-400 mr-2" />
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Available</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{groupedTests.available.length}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-md">
+              <div className="flex items-center">
+                <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400 mr-2" />
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Upcoming</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{groupedTests.upcoming.length}</p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-700/20 p-3 rounded-md">
+              <div className="flex items-center">
+                <CheckCircle className="h-5 w-5 text-gray-600 dark:text-gray-400 mr-2" />
+                <div>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Completed</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{groupedTests.completed.length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Live Tests */}
+        {groupedTests.live.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center">
+              <Play className="h-5 w-5 text-green-600 dark:text-green-400 mr-2" />
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+                Live Now
+              </h2>
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                {groupedTests.live.length} test{groupedTests.live.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {groupedTests.live.map((test) => {
+                const liveTest = test as LiveTest;
+                
+                // Get associated class
+                const classId = test.classIds[0]; // Just get first one for now
+                const enrollment = enrollments.find(e => e.classId === classId);
+                const className = enrollment?.className || 'Unknown Class';
+                const subject = enrollment?.subject || 'Unknown Subject';
+
+                return (
+                  <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                      <div className="mb-4 md:mb-0">
+                        <div className="flex items-center">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {test.title}
+                          </h3>
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                            Live Now
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                          {subject} • {className}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                          Duration: {liveTest.duration} minutes • Ends at {formatDateTime(liveTest.actualEndTime)}
+                        </p>
+                      </div>
+                      <div>
+                        <Button 
+                          onClick={() => handleStartTest(test.id)}
+                          className="inline-flex items-center bg-green-600 hover:bg-green-700"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Join Now
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Available Tests */}
+        {groupedTests.available.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center">
+              <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400 mr-2" />
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+                Available Tests
+              </h2>
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                {groupedTests.available.length} test{groupedTests.available.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {groupedTests.available.map((test) => {
+                const flexTest = test as FlexibleTest;
+                
+                // Get associated class
+                const classId = test.classIds[0]; // Just get first one for now
+                const enrollment = enrollments.find(e => e.classId === classId);
+                const className = enrollment?.className || 'Unknown Class';
+                const subject = enrollment?.subject || 'Unknown Subject';
+
+                return (
+                  <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                      <div className="mb-4 md:mb-0">
+                        <div className="flex items-center">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {test.title}
+                          </h3>
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                            Available
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                          {subject} • {className}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                          Duration: {flexTest.duration || 'No time limit'} minutes • Available until {formatDateTime(flexTest.availableTo)}
+                        </p>
+                      </div>
+                      <div>
+                        <Button 
+                          onClick={() => handleStartTest(test.id)}
+                          className="inline-flex items-center"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Start Test
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Upcoming Tests */}
+        {groupedTests.upcoming.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center">
+              <Calendar className="h-5 w-5 text-purple-600 dark:text-purple-400 mr-2" />
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+                Upcoming Tests
+              </h2>
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                {groupedTests.upcoming.length} test{groupedTests.upcoming.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {groupedTests.upcoming.map((test) => {
+                // Get start time based on test type
+                const startTime = test.type === 'live' 
+                  ? (test as LiveTest).studentJoinTime 
+                  : (test as FlexibleTest).availableFrom;
+                
+                // Get associated class
+                const classId = test.classIds[0]; // Just get first one for now
+                const enrollment = enrollments.find(e => e.classId === classId);
+                const className = enrollment?.className || 'Unknown Class';
+                const subject = enrollment?.subject || 'Unknown Subject';
+
+                return (
+                  <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="flex items-center">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {test.title}
+                          </h3>
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300">
+                            Upcoming
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                          {subject} • {className}
+                        </p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                          Scheduled for {formatDateTime(startTime)}
+                        </p>
+                      </div>
+                      <div className="mt-4 md:mt-0 flex items-center text-gray-500 dark:text-gray-400">
+                        <Clock className="w-4 h-4 mr-2" />
+                        <span>Starts in {calculateTimeRemaining(startTime)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Completed Tests */}
+        {groupedTests.completed.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center">
+              <CheckCircle className="h-5 w-5 text-gray-600 dark:text-gray-400 mr-2" />
+              <h2 className="text-lg font-medium text-gray-900 dark:text-white">
+                Completed Tests
+              </h2>
+              <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">
+                {groupedTests.completed.length} test{groupedTests.completed.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+              {groupedTests.completed.slice(0, 5).map((test) => {
+                // Get associated class
+                const classId = test.classIds[0]; // Just get first one for now
+                const enrollment = enrollments.find(e => e.classId === classId);
+                const className = enrollment?.className || 'Unknown Class';
+                const subject = enrollment?.subject || 'Unknown Subject';
+
+                return (
+                  <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="flex items-center">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {test.title}
+                          </h3>
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">
+                            Completed
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                          {subject} • {className}
+                        </p>
+                      </div>
+                      <div className="mt-4 md:mt-0">
+                        <Button 
+                          onClick={() => router.push(`/student/test/${test.id}/result`)}
+                          variant="outline"
+                          className="inline-flex items-center"
+                        >
+                          <ArrowRight className="w-4 h-4 mr-2" />
+                          View Results
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {groupedTests.completed.length > 5 && (
+                <div className="p-4 text-center">
+                  <button
+                    onClick={() => router.push('/student/results')}
+                    className="text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium"
+                  >
+                    View all {groupedTests.completed.length} completed tests
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* No Tests */}
+        {filteredTests.length === 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
+            <Info className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              No Tests Found
+            </h2>
+            <p className="text-gray-600 dark:text-gray-300 mb-6">
+              {searchTerm || selectedSubjectId !== 'all' 
+                ? "No tests match your current filters. Try adjusting your search criteria."
+                : "You don't have any tests assigned to your classes yet. Check back later or contact your teacher."}
+            </p>
+            {(searchTerm || selectedSubjectId !== 'all') && (
+              <Button 
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedSubjectId('all');
+                }}
+                variant="outline"
+                className="inline-flex items-center"
+              >
+                Clear Filters
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </StudentLayout>
+  );
+}
+
+// Helper function to calculate remaining time
+function calculateTimeRemaining(timestamp: any): string {
+  const now = new Date();
+  let targetDate: Date;
+  
+  try {
+    // Handle different timestamp formats
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      targetDate = timestamp.toDate();
+    } else if (timestamp && typeof timestamp.seconds === 'number') {
+      targetDate = new Date(timestamp.seconds * 1000);
+    } else if (timestamp instanceof Date) {
+      targetDate = timestamp;
+    } else if (typeof timestamp === 'string') {
+      targetDate = new Date(timestamp);
+    } else {
+      console.warn('Invalid timestamp format for time calculation:', timestamp);
+      return "Unknown time";
+    }
+  } catch (error) {
+    console.error('Error calculating time remaining:', error, timestamp);
+    return "Unknown time";
+  }
+  
+  const diffMs = targetDate.getTime() - now.getTime();
+  
+  if (diffMs <= 0) return "Starting now";
+  
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffHrs = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (diffDays > 0) {
+    return `${diffDays}d ${diffHrs}h`;
+  } else if (diffHrs > 0) {
+    return `${diffHrs}h ${diffMins}m`;
+  } else {
+    return `${diffMins}m`;
+  }
+}

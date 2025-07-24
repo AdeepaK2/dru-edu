@@ -205,8 +205,34 @@ export default function TeacherTests() {
     });
   };
 
-  const formatDateTime = (timestamp: Timestamp) => {
-    const date = timestamp.toDate();
+  const formatDateTime = (timestamp: any) => {
+    let date: Date;
+    
+    // Handle Firestore Timestamp
+    if (timestamp && typeof timestamp.toDate === 'function') {
+      date = timestamp.toDate();
+    }
+    // Handle plain Date object
+    else if (timestamp instanceof Date) {
+      date = timestamp;
+    }
+    // Handle number (milliseconds)
+    else if (typeof timestamp === 'number') {
+      date = new Date(timestamp);
+    }
+    // Handle Firestore Timestamp object structure
+    else if (timestamp && timestamp.seconds) {
+      date = new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000);
+    }
+    // Handle string
+    else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    }
+    // Fallback
+    else {
+      date = new Date();
+    }
+    
     return date.toLocaleString('en-AU', {
       timeZone: 'Australia/Melbourne',
       year: 'numeric',

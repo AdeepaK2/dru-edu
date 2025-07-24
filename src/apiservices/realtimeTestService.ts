@@ -1,5 +1,5 @@
 // Real-time test session service using Firebase Realtime Database
-// Handles live answer tracking, monitoring, and session management
+// Handles live answer tracking, monitoring, and session management with attempt tracking
 
 import { 
   getDatabase, 
@@ -21,9 +21,34 @@ import {
   RealtimeMonitoring,
   TestSessionEvent
 } from '@/models/studentSubmissionSchema';
+import { AttemptManagementService } from './attemptManagementService';
+import { TimeCalculation } from '@/models/attemptSchema';
 
 export class RealtimeTestService {
   private static database: Database;
+  
+  // Helper function to remove undefined values recursively
+  private static removeUndefinedValues(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return null;
+    }
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.removeUndefinedValues(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const cleaned: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined) {
+          cleaned[key] = this.removeUndefinedValues(value);
+        }
+      }
+      return cleaned;
+    }
+    
+    return obj;
+  }
   
   // Initialize Realtime Database
   static init() {
@@ -33,7 +58,7 @@ export class RealtimeTestService {
     return this.database;
   }
 
-  // Start a new test session for a student
+  // Start a new test session for a student with attempt management
   static async startTestSession(
     attemptId: string,
     testId: string,
@@ -45,6 +70,9 @@ export class RealtimeTestService {
     try {
       const db = this.init();
       const now = Date.now();
+      
+      // Start the attempt in attempt management service
+      await AttemptManagementService.startAttempt(attemptId);
       
       const session: RealtimeTestSession = {
         attemptId,
@@ -107,6 +135,12 @@ export class RealtimeTestService {
       const db = this.init();
       const now = Date.now();
       
+      // Ensure answer is not undefined - convert to appropriate default values
+      let cleanAnswer = answer;
+      if (answer === undefined || answer === null) {
+        cleanAnswer = questionType === 'essay' ? '' : 0;
+      }
+      
       // Get current answer to track changes
       const currentAnswerRef = ref(db, `testSessions/${attemptId}/answers/${questionId}`);
       const currentSnapshot = await get(currentAnswerRef);
@@ -116,36 +150,46 @@ export class RealtimeTestService {
       const change: AnswerChange = {
         timestamp: now,
         type: questionType === 'mcq' ? 'select' : 'text_change',
-        previousValue: currentAnswer?.selectedOption || currentAnswer?.textContent,
-        newValue: answer,
+        previousValue: currentAnswer?.selectedOption || currentAnswer?.textContent || null,
+        newValue: cleanAnswer,
         timeOnQuestion: timeSpent
       };
 
-      // Create updated answer
+      // Create updated answer - ensure no undefined values
       const updatedAnswer: RealtimeAnswer = {
-        questionId,
-        selectedOption: questionType === 'mcq' ? answer : undefined,
-        textContent: questionType === 'essay' ? answer : undefined,
+        questionId: questionId || '',
         lastModified: now,
-        timeSpent: timeSpent,
+        timeSpent: timeSpent || 0,
         isMarkedForReview: currentAnswer?.isMarkedForReview || false,
         changeHistory: [...(currentAnswer?.changeHistory || []), change]
       };
 
-      // Update in realtime DB
+      // Add type-specific properties only if they have values
+      if (questionType === 'mcq') {
+        updatedAnswer.selectedOption = cleanAnswer;
+      } else if (questionType === 'essay') {
+        updatedAnswer.textContent = cleanAnswer;
+      }
+
+      // Clean the updatedAnswer object to remove any undefined values
+      const cleanUpdatedAnswer = this.removeUndefinedValues(updatedAnswer);
+
+      // Update in realtime DB with clean data
       const updates: Record<string, any> = {
-        [`testSessions/${attemptId}/answers/${questionId}`]: updatedAnswer,
+        [`testSessions/${attemptId}/answers/${questionId}`]: cleanUpdatedAnswer,
         [`testSessions/${attemptId}/lastActivity`]: now,
-        [`testSessions/${attemptId}/timePerQuestion/${questionId}`]: timeSpent
+        [`testSessions/${attemptId}/timePerQuestion/${questionId}`]: timeSpent || 0
       };
 
       await update(ref(db), updates);
       
       // Log answer change event
       await this.logSessionEvent(attemptId, '', 'answer_change', { 
-        questionId, 
-        questionType,
-        answerValue: questionType === 'mcq' ? answer : answer?.substring(0, 50) + '...'
+        questionId: questionId || '', 
+        questionType: questionType || 'mcq',
+        answerValue: questionType === 'mcq' 
+          ? (cleanAnswer || 0).toString() 
+          : (cleanAnswer || '').toString().substring(0, 50) + (cleanAnswer && cleanAnswer.length > 50 ? '...' : '')
       });
 
       console.log('💾 Answer saved in real-time for question:', questionId);
@@ -392,9 +436,15 @@ export class RealtimeTestService {
       const snapshot = await get(sessionsRef);
       const allSessions = snapshot.val() || {};
       
-      // Filter sessions for this test
+      // Ensure allSessions is a valid object before processing
+      if (!allSessions || typeof allSessions !== 'object') {
+        console.log('No sessions found or invalid sessions data');
+        return;
+      }
+      
+      // Filter sessions for this test - add safety checks
       const testSessions = Object.values(allSessions).filter(
-        (session: any) => session.testId === testId
+        (session: any) => session && session.testId === testId && session.studentId
       ) as RealtimeTestSession[];
 
       // Calculate stats
@@ -410,15 +460,20 @@ export class RealtimeTestService {
       // Create active students mapping
       const activeStudents: Record<string, any> = {};
       testSessions.forEach(session => {
+        // Safely handle potentially missing properties
+        const answers = session.answers || {};
+        const questionsVisited = session.questionsVisited || [];
+        const suspiciousActivity = session.suspiciousActivity || { tabSwitches: 0 };
+        
         activeStudents[session.studentId] = {
           studentId: session.studentId,
-          studentName: session.studentName,
-          status: session.status,
-          currentQuestion: session.currentQuestionIndex,
-          progress: (Object.keys(session.answers).length / (session.questionsVisited.length || 1)) * 100,
+          studentName: session.studentName || 'Unknown Student',
+          status: session.status || 'unknown',
+          currentQuestion: session.currentQuestionIndex || 0,
+          progress: questionsVisited.length > 0 ? (Object.keys(answers).length / questionsVisited.length) * 100 : 0,
           timeRemaining: Math.max(0, (session.startTime + 90 * 60 * 1000) - now), // assuming 90 min test
-          lastActivity: session.lastActivity,
-          suspiciousActivity: (session.suspiciousActivity?.tabSwitches || 0) > 3
+          lastActivity: session.lastActivity || session.startTime || now,
+          suspiciousActivity: (suspiciousActivity.tabSwitches || 0) > 3
         };
       });
 
@@ -445,30 +500,146 @@ export class RealtimeTestService {
   ): Promise<void> {
     try {
       const db = this.init();
+      
+      // Clean the data object to remove undefined values
+      const cleanData = this.removeUndefinedValues(data);
+      
       const event: TestSessionEvent = {
         timestamp: Date.now(),
-        attemptId,
-        studentId,
+        attemptId: attemptId || '',
+        studentId: studentId || '',
         eventType: eventType as any,
-        data,
-        questionId: data?.questionId
+        data: cleanData,
+        questionId: cleanData?.questionId || null
       };
 
-      await push(ref(db, `testEvents/${attemptId.substring(0, 8)}`), event);
+      // Clean the entire event object
+      const cleanEvent = this.removeUndefinedValues(event);
+
+      await push(ref(db, `testEvents/${attemptId.substring(0, 8)}`), cleanEvent);
     } catch (error) {
       console.error('Error logging session event:', error);
     }
   }
 
-  // Heartbeat to keep session alive
-  static async updateHeartbeat(attemptId: string): Promise<void> {
+  // Heartbeat to keep session alive and update time
+  static async updateHeartbeat(attemptId: string): Promise<TimeCalculation | null> {
     try {
       const db = this.init();
+      const now = Date.now();
+      
+      // Update session heartbeat
       await update(ref(db, `testSessions/${attemptId}`), {
-        lastActivity: Date.now()
+        lastActivity: now
       });
+
+      // Update attempt time through attempt management service
+      try {
+        const timeCalc = await AttemptManagementService.updateAttemptTime(attemptId);
+        return timeCalc;
+      } catch (error) {
+        console.warn('Could not update attempt time:', error);
+        return null;
+      }
     } catch (error) {
       console.error('Error updating heartbeat:', error);
+      return null;
+    }
+  }
+
+  // Get current time remaining for an attempt
+  static async getTimeRemaining(attemptId: string): Promise<TimeCalculation | null> {
+    try {
+      return await AttemptManagementService.updateAttemptTime(attemptId);
+    } catch (error) {
+      console.error('Error getting time remaining:', error);
+      return null;
+    }
+  }
+
+  // Handle page visibility change (tab switch detection)
+  static async handleVisibilityChange(attemptId: string, isVisible: boolean): Promise<void> {
+    try {
+      if (!isVisible) {
+        // Student switched away from tab
+        await this.logSessionEvent(attemptId, '', 'tab_switch', { 
+          action: 'tab_hidden',
+          timestamp: Date.now()
+        });
+        
+        // Potentially pause time tracking or mark as suspicious
+        console.warn('🚨 Student switched away from test tab');
+      } else {
+        // Student returned to tab
+        await this.logSessionEvent(attemptId, '', 'tab_switch', { 
+          action: 'tab_visible',
+          timestamp: Date.now()
+        });
+        
+        console.log('👁️ Student returned to test tab');
+      }
+    } catch (error) {
+      console.error('Error handling visibility change:', error);
+    }
+  }
+
+  // Handle offline/online detection
+  static async handleOffline(attemptId: string): Promise<void> {
+    try {
+      await AttemptManagementService.handleDisconnection(attemptId);
+      
+      await this.logSessionEvent(attemptId, '', 'connection_lost', { 
+        timestamp: Date.now(),
+        reason: 'Offline detected'
+      });
+      
+      console.log('📴 Student went offline');
+    } catch (error) {
+      console.error('Error handling offline:', error);
+    }
+  }
+
+  static async handleOnline(attemptId: string): Promise<TimeCalculation | null> {
+    try {
+      const timeCalc = await AttemptManagementService.handleReconnection(attemptId);
+      
+      await this.logSessionEvent(attemptId, '', 'connection_restored', { 
+        timestamp: Date.now(),
+        reason: 'Online detected',
+        timeRemaining: timeCalc.timeRemaining
+      });
+      
+      console.log('🔌 Student came back online, remaining time:', timeCalc.timeRemaining);
+      return timeCalc;
+    } catch (error) {
+      console.error('Error handling online:', error);
+      return null;
+    }
+  }
+
+  // Submit test session
+  static async submitTestSession(attemptId: string, isAutoSubmit: boolean = false): Promise<void> {
+    try {
+      const db = this.init();
+      
+      // Update session status
+      await update(ref(db, `testSessions/${attemptId}`), {
+        status: isAutoSubmit ? 'auto_submitted' : 'submitted',
+        endTime: Date.now(),
+        lastActivity: Date.now()
+      });
+
+      // Submit through attempt management service
+      await AttemptManagementService.submitAttempt(attemptId, isAutoSubmit);
+      
+      await this.logSessionEvent(attemptId, '', isAutoSubmit ? 'auto_submit' : 'manual_submit', { 
+        timestamp: Date.now()
+      });
+      
+      console.log(isAutoSubmit ? '⏰ Test auto-submitted' : '📤 Test manually submitted');
+    } catch (error) {
+      console.error('Error submitting test session:', error);
+      throw error;
     }
   }
 }

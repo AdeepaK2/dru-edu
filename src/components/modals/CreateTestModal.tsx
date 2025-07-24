@@ -8,6 +8,7 @@ import { LessonDocument } from '@/models/lessonSchema';
 import { TestService } from '@/apiservices/testService';
 import { LessonFirestoreService } from '@/apiservices/lessonFirestoreService';
 import { questionService } from '@/apiservices/questionBankFirestoreService';
+import { TestNumberingService } from '@/apiservices/testNumberingService';
 import { Timestamp } from 'firebase/firestore';
 
 interface CreateTestModalProps {
@@ -34,6 +35,7 @@ interface TestFormData {
   description: string;
   instructions: string;
   type: TestType | '';
+  questionType: 'mcq' | 'essay' | 'mixed' | ''; // New field for question type selection
 
   // Step 2: Timing & Duration
   // For flexible tests
@@ -71,6 +73,7 @@ const INITIAL_FORM_DATA: TestFormData = {
   description: '',
   instructions: '',
   type: '',
+  questionType: '',
   
   availableFrom: '',
   availableTo: '',
@@ -126,6 +129,8 @@ export default function CreateTestModal({
   const [loadingLessons, setLoadingLessons] = useState(false);
   const [existingTestNumbers, setExistingTestNumbers] = useState<Set<string>>(new Set());
   const [loadingTestNumbers, setLoadingTestNumbers] = useState(false);
+  const [suggestedTestNumber, setSuggestedTestNumber] = useState<number>(1);
+  const [usedTestNumbers, setUsedTestNumbers] = useState<number[]>([]);
   
   // State for manual question selection
   const [availableQuestions, setAvailableQuestions] = useState<Question[]>([]);
@@ -202,12 +207,30 @@ export default function CreateTestModal({
     
     try {
       setLoadingTestNumbers(true);
-      // For now, create a simple method to get existing test numbers
-      // You can implement TestService.getTestsForClass later
-      setExistingTestNumbers(new Set(['1', '2', '3'])); // Mock data for now
+      
+      // Get test number suggestions from the service
+      const suggestions = await TestNumberingService.getTestNumberSuggestions(
+        selectedClassId,
+        subjectId // Pass subject ID for subject-specific numbering
+      );
+      
+      // Update state with suggestions
+      setSuggestedTestNumber(suggestions.suggestedNumber);
+      setUsedTestNumbers(suggestions.usedNumbers);
+      setExistingTestNumbers(new Set(suggestions.usedNumbers.map(String)));
+      
+      // Auto-fill the suggested number if no number is set
+      if (!formData.testNumber) {
+        updateFormData({ testNumber: suggestions.suggestedNumber.toString() });
+      }
+      
+      console.log('📋 Test number suggestions loaded:', suggestions);
+      
     } catch (error) {
       console.error('Error loading test numbers:', error);
       setExistingTestNumbers(new Set());
+      setSuggestedTestNumber(1);
+      setUsedTestNumbers([]);
     } finally {
       setLoadingTestNumbers(false);
     }
@@ -243,8 +266,9 @@ export default function CreateTestModal({
       case 1: // Basic Info & Type
         if (!formData.title.trim()) newErrors.title = 'Test title is required';
         if (!formData.type) newErrors.type = 'Test type is required';
+        if (!formData.questionType) newErrors.questionType = 'Question type is required';
         // Test number validation for selected class (only if testNumber is provided)
-        if (selectedClassId && formData.testNumber && existingTestNumbers.has(formData.testNumber)) {
+        if (selectedClassId && formData.testNumber && usedTestNumbers.includes(parseInt(formData.testNumber))) {
           newErrors.testNumber = 'This test number is already taken';
         }
         console.log('🔍 Step 1 validation errors:', newErrors);
@@ -340,21 +364,30 @@ export default function CreateTestModal({
         title: formData.testNumber ? 
           `${formData.title} ${formData.testNumber ? `(Test ${formData.testNumber})` : ''}` : 
           formData.title,
-        description: formData.description,
-        instructions: formData.instructions,
+        description: formData.description || '', // Ensure not undefined
+        instructions: formData.instructions || '', // Ensure not undefined
         teacherId: '', // Will be set by TestService
         teacherName: '', // Will be set by TestService
-        subjectId: subjectId,
-        subjectName: subjectName,
+        subjectId: subjectId || '', // Ensure not undefined
+        subjectName: subjectName || '', // Ensure not undefined
         classIds: selectedClassId ? [selectedClassId] : availableClasses.map(c => c.id),
         classNames: selectedClassId ? 
           [availableClasses.find(c => c.id === selectedClassId)?.name || ''] : 
           availableClasses.map(c => c.name),
         config: testConfig,
-        questions: formData.selectedQuestions, // Will be populated by TestService based on selection method
+        questions: formData.selectedQuestions || [], // Ensure not undefined
         totalMarks: formData.totalQuestions * 1, // Assuming 1 mark per question
         status: 'draft' as const,
       };
+      
+      console.log('🔍 Base test data constructed:', baseTestData);
+      console.log('🔍 Base test data keys:', Object.keys(baseTestData));
+      
+      // Check for undefined in base data
+      const baseUndefinedFields = Object.entries(baseTestData).filter(([key, value]) => value === undefined);
+      if (baseUndefinedFields.length > 0) {
+        console.warn('⚠️ Undefined fields in base data:', baseUndefinedFields);
+      }
 
       // Create type-specific test data
       let testData;
@@ -387,8 +420,46 @@ export default function CreateTestModal({
         };
       }
 
+      // Debug test data before sending to Firebase
+      console.log('🔍 Final test data before Firebase:', testData);
+      
+      // Check for undefined values and clean them up
+      const cleanTestData = { ...testData };
+      
+      // Remove undefined values recursively
+      const removeUndefined = (obj: any): any => {
+        if (obj === null || obj === undefined) {
+          return null;
+        }
+        if (Array.isArray(obj)) {
+          return obj.map(removeUndefined).filter(item => item !== undefined);
+        }
+        if (typeof obj === 'object') {
+          const cleaned: any = {};
+          for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined) {
+              cleaned[key] = removeUndefined(value);
+            }
+          }
+          return cleaned;
+        }
+        return obj;
+      };
+      
+      const finalTestData = removeUndefined(cleanTestData);
+      
+      console.log('🧹 Cleaned test data:', finalTestData);
+      console.log('🔍 Test data keys:', Object.keys(finalTestData));
+      
+      // Additional validation
+      const undefinedFields = Object.entries(finalTestData).filter(([key, value]) => value === undefined);
+      if (undefinedFields.length > 0) {
+        console.error('❌ Found undefined fields:', undefinedFields);
+        throw new Error(`Test data contains undefined fields: ${undefinedFields.map(([key]) => key).join(', ')}`);
+      }
+
       // Create the test
-      const testId = await TestService.createTest(testData as any); // Type assertion for now
+      const testId = await TestService.createTest(finalTestData as any); // Type assertion for now
       
       // Handle question selection based on method
       if (formData.questionSelectionMethod === 'auto' && formData.selectedLessonIds.length > 0) {
@@ -425,7 +496,7 @@ export default function CreateTestModal({
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-4">
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              Create New Test
+              Create New Test - Step {currentStep} of {totalSteps}
             </h2>
             <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
               <span>Step {currentStep} of {totalSteps}</span>
@@ -503,6 +574,54 @@ export default function CreateTestModal({
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       Test Number (Optional)
                     </label>
+                    
+                    {/* Suggested Number Display */}
+                    {!loadingTestNumbers && (
+                      <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div className="flex items-center space-x-1">
+                              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                                Suggested:
+                              </span>
+                              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-sm font-medium">
+                                {suggestedTestNumber}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => updateFormData({ testNumber: suggestedTestNumber.toString() })}
+                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline"
+                            >
+                              Use this number
+                            </button>
+                          </div>
+                          
+                          {usedTestNumbers.length > 0 && (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-gray-600 dark:text-gray-400">Used:</span>
+                              <div className="flex flex-wrap gap-1">
+                                {usedTestNumbers.slice(0, 5).map(num => (
+                                  <span 
+                                    key={num}
+                                    className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded text-xs"
+                                  >
+                                    {num}
+                                  </span>
+                                ))}
+                                {usedTestNumbers.length > 5 && (
+                                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                                    +{usedTestNumbers.length - 5} more
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Input Field */}
                     <div className="flex items-center space-x-3">
                       <input
                         type="text"
@@ -511,23 +630,31 @@ export default function CreateTestModal({
                         className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
                           errors.testNumber ? 'border-red-500' : 'border-gray-300'
                         }`}
-                        placeholder="1"
+                        placeholder={loadingTestNumbers ? "Loading..." : suggestedTestNumber.toString()}
                       />
+                      
                       {loadingTestNumbers ? (
-                        <div className="text-xs text-gray-500">Loading...</div>
-                      ) : existingTestNumbers.size > 0 ? (
-                        <div className="text-xs text-gray-500">
-                          Used: {Array.from(existingTestNumbers).join(', ')}
+                        <div className="flex items-center space-x-2 text-xs text-gray-500">
+                          <div className="animate-spin w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                          <span>Loading...</span>
+                        </div>
+                      ) : usedTestNumbers.length === 0 ? (
+                        <div className="text-xs text-green-600 dark:text-green-400 font-medium">
+                          First test! 🎉
                         </div>
                       ) : (
-                        <div className="text-xs text-gray-500">No tests yet</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {usedTestNumbers.length} test{usedTestNumbers.length !== 1 ? 's' : ''} created
+                        </div>
                       )}
                     </div>
+                    
                     {errors.testNumber && (
                       <p className="mt-1 text-sm text-red-500">{errors.testNumber}</p>
                     )}
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Choose a unique number for this test (e.g., 1, 2, 3...)
+                    
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Choose a unique number for this test. Numbers are automatically suggested based on existing tests.
                     </p>
                   </div>
                 )}
