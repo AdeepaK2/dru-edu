@@ -18,6 +18,7 @@ export type AttemptStatus = 'not_started' | 'in_progress' | 'submitted' | 'auto_
 export interface TestConfig {
   // Question selection
   questionSelectionMethod: QuestionSelectionMethod;
+  questionType?: 'mcq' | 'essay'; // New field for question type preference
   totalQuestions: number;
   shuffleQuestions: boolean;
   showQuestionsOneByOne: boolean;

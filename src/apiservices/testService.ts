@@ -196,31 +196,104 @@ export class TestService {
       let currentOrder = 1;
 
       for (const selection of selections) {
-        // Get questions from the specified bank and lessons
-        let questionsQuery = query(
-          collection(firestore, 'questions'),
-          where('bankId', '==', selection.bankId)
-        );
-
-        if (selection.lessonIds && selection.lessonIds.length > 0) {
-          questionsQuery = query(
-            questionsQuery,
-            where('lessonId', 'in', selection.lessonIds)
-          );
+        console.log(`🔍 Processing selection for bank: ${selection.bankName} (${selection.bankId})`);
+        console.log(`🔍 Lesson IDs: ${selection.lessonIds?.join(', ') || 'none'}`);
+        console.log(`🔍 Question count needed: ${selection.questionCount}`);
+        
+        // Get the question bank to find its questionIds
+        console.log(`🔍 Attempting to fetch question bank with ID: ${selection.bankId} from collection: questionBanks`);
+        const bankDoc = await getDoc(doc(firestore, 'questionBanks', selection.bankId));
+        console.log(`🔍 Bank document exists: ${bankDoc.exists()}`);
+        if (!bankDoc.exists()) {
+          console.error(`❌ Question bank ${selection.bankId} not found in collection questionBanks`);
+          
+          // Let's try to list some documents to debug
+          try {
+            const bankCollection = await getDocs(query(collection(firestore, 'questionBanks'), limit(5)));
+            console.log(`🔍 Sample question banks in collection:`, bankCollection.docs.map(doc => ({ id: doc.id, name: doc.data().name })));
+          } catch (listError) {
+            console.error(`❌ Error listing question banks:`, listError);
+          }
+          
+          continue;
+        }
+        
+        const questionBank = bankDoc.data();
+        const questionIds = questionBank.questionIds || [];
+        
+        console.log(`🔍 Question bank found with ${questionIds.length} questions`);
+        
+        if (questionIds.length === 0) {
+          console.log(`No questions found in bank ${selection.bankName}`);
+          continue;
         }
 
-        const snapshot = await getDocs(questionsQuery);
-        const questions = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Question[];
+        // Get lesson names if lesson IDs are specified
+        let lessonNames: string[] = [];
+        if (selection.lessonIds && selection.lessonIds.length > 0) {
+          console.log(`🔍 Getting lesson names for IDs: ${selection.lessonIds.join(', ')}`);
+          const lessonPromises = selection.lessonIds.map(lessonId => 
+            getDoc(doc(firestore, 'lessons', lessonId))
+          );
+          const lessonDocs = await Promise.all(lessonPromises);
+          lessonNames = lessonDocs
+            .filter(doc => doc.exists())
+            .map(doc => doc.data()?.name)
+            .filter(name => name);
+          console.log(`🔍 Found lesson names: ${lessonNames.join(', ')}`);
+        }
+
+        // Query questions by their IDs (in batches if needed)
+        const questions: Question[] = [];
+        const batchSize = 10; // Firestore 'in' query limit
+        
+        console.log(`🔍 Querying ${questionIds.length} questions in batches of ${batchSize}`);
+        
+        for (let i = 0; i < questionIds.length; i += batchSize) {
+          const batch = questionIds.slice(i, i + batchSize);
+          const questionsQuery = query(
+            collection(firestore, 'questions'),
+            where('__name__', 'in', batch)
+          );
+          
+          const snapshot = await getDocs(questionsQuery);
+          const batchQuestions = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          })) as Question[];
+          
+          console.log(`🔍 Batch ${Math.floor(i/batchSize) + 1}: Found ${batchQuestions.length} questions`);
+          questions.push(...batchQuestions);
+        }
+        
+        console.log(`🔍 Total questions retrieved: ${questions.length}`);
+        console.log(`🔍 Questions topics: ${questions.map(q => q.topic || 'no-topic').join(', ')}`);
+
+        // Filter by lesson topics if specified
+        let filteredQuestions = questions;
+        if (lessonNames.length > 0) {
+          filteredQuestions = questions.filter(q => 
+            q.topic && lessonNames.includes(q.topic)
+          );
+          console.log(`🔍 After lesson filtering: ${filteredQuestions.length} questions`);
+          console.log(`🔍 Filtered questions topics: ${filteredQuestions.map(q => q.topic).join(', ')}`);
+        }
+
+        // Filter by question type if specified
+        if (config.questionType) {
+          const beforeTypeFilter = filteredQuestions.length;
+          filteredQuestions = filteredQuestions.filter(q => q.type === config.questionType);
+          console.log(`🔍 After type filtering (${config.questionType}): ${filteredQuestions.length} questions (was ${beforeTypeFilter})`);
+        }
+
+        console.log(`Found ${filteredQuestions.length} questions for selection from ${selection.bankName}`);
 
         // Group by difficulty if balance is specified
         if (config.difficultyBalance && selection.difficultyDistribution) {
           const { easy, medium, hard } = selection.difficultyDistribution;
-          const easyQs = questions.filter(q => q.difficultyLevel === 'easy');
-          const mediumQs = questions.filter(q => q.difficultyLevel === 'medium');
-          const hardQs = questions.filter(q => q.difficultyLevel === 'hard');
+          const easyQs = filteredQuestions.filter(q => q.difficultyLevel === 'easy');
+          const mediumQs = filteredQuestions.filter(q => q.difficultyLevel === 'medium');
+          const hardQs = filteredQuestions.filter(q => q.difficultyLevel === 'hard');
 
           // Select required number from each difficulty
           const selectedEasy = this.shuffleArray(easyQs).slice(0, easy);
@@ -235,13 +308,19 @@ export class TestService {
           }
         } else {
           // Random selection without difficulty balance
-          const shuffled = this.shuffleArray(questions);
+          const shuffled = this.shuffleArray(filteredQuestions);
           const selected = shuffled.slice(0, selection.questionCount);
           
           for (const question of selected) {
             selectedQuestions.push(this.convertToTestQuestion(question, currentOrder++));
           }
         }
+      }
+
+      console.log(`🔍 Total selected questions across all banks: ${selectedQuestions.length}`);
+      
+      if (selectedQuestions.length === 0) {
+        console.warn(`⚠️ No questions were selected from any bank`);
       }
 
       // Shuffle final questions if required
@@ -254,6 +333,8 @@ export class TestService {
 
       return selectedQuestions;
     } catch (error) {
+      console.error('❌ Error in autoSelectQuestions:', error);
+      throw error;
       console.error('Error auto-selecting questions:', error);
       throw new Error('Failed to auto-select questions');
     }
@@ -320,9 +401,9 @@ export class TestService {
       
       // Also store in questionData for detailed access
       if (testQuestion.questionData) {
-        testQuestion.questionData.options = mcq.options?.map(opt => ({
-          id: opt.id || '',
-          text: opt.text || '',
+        testQuestion.questionData.options = mcq.options?.map((opt, index) => ({
+          id: opt.id || `option_${index}`, // Generate ID if missing
+          text: opt.text || `Option ${String.fromCharCode(65 + index)}`, // Fallback option text
           imageUrl: opt.imageUrl || undefined
         })) || [];
         testQuestion.questionData.explanation = mcq.explanation || undefined;

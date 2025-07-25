@@ -587,7 +587,9 @@ export default function StudentTestTaking() {
                           <span className="inline-flex items-center justify-center w-6 h-6 bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-full mr-3">
                             {String.fromCharCode(65 + index)}
                           </span>
-                          <span className="text-gray-900 dark:text-white">{option.text || `Option ${String.fromCharCode(65 + index)}`}</span>
+                          <span className="text-gray-900 dark:text-white">
+                            {option.text && option.text.trim() ? option.text : String.fromCharCode(65 + index)}
+                          </span>
                           {option.imageUrl && (
                             <img
                               src={option.imageUrl}

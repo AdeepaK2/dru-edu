@@ -237,7 +237,10 @@ export default function StudentTests() {
           return timestamp.getTime() / 1000;
         } else if (typeof timestamp === 'string') {
           return new Date(timestamp).getTime() / 1000;
+        } else if (typeof timestamp === 'number') {
+          return timestamp > 1000000000000 ? timestamp / 1000 : timestamp; // Convert milliseconds to seconds if needed
         }
+        console.warn('⚠️ Unknown timestamp format in live test getSeconds:', timestamp);
         return 0;
       };
       
@@ -264,7 +267,10 @@ export default function StudentTests() {
           return timestamp.getTime() / 1000;
         } else if (typeof timestamp === 'string') {
           return new Date(timestamp).getTime() / 1000;
+        } else if (typeof timestamp === 'number') {
+          return timestamp > 1000000000000 ? timestamp / 1000 : timestamp; // Convert milliseconds to seconds if needed
         }
+        console.warn('⚠️ Unknown timestamp format in flexible test getSeconds:', timestamp);
         return 0;
       };
       

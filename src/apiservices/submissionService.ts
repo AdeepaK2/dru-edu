@@ -218,21 +218,50 @@ export class SubmissionService {
 
         // Process MCQ auto-grading
         if (question.type === 'mcq' && answer.selectedOption !== undefined) {
-          const isCorrect = answer.selectedOption === question.correctOption;
+          // Helper function to get option display text
+          const getOptionText = (option: any, index: number): string => {
+            if (option && option.text && option.text.trim()) {
+              return option.text;
+            }
+            return String.fromCharCode(65 + index); // A, B, C, D
+          };
+          
+          // Find correct option index - use correctOption property
+          const correctOptionIndex = question.correctOption || 0;
+          
+          // Convert selectedOption from ID to index if it's a string
+          let selectedOptionIndex: number;
+          if (typeof answer.selectedOption === 'string') {
+            // Find the index of the selected option by its ID
+            selectedOptionIndex = question.questionData?.options?.findIndex(opt => opt.id === answer.selectedOption) ?? -1;
+            if (selectedOptionIndex === -1) {
+              console.warn(`Selected option ID ${answer.selectedOption} not found in question options`);
+              selectedOptionIndex = 0; // Default to first option
+            }
+          } else {
+            // If it's already a number, use it directly
+            selectedOptionIndex = answer.selectedOption as number;
+          }
+          
+          const isCorrect = selectedOptionIndex === correctOptionIndex;
           const marksAwarded = isCorrect ? (question.marks || 0) : 0;
           
           finalAnswer.isCorrect = isCorrect;
           finalAnswer.marksAwarded = marksAwarded;
           autoGradedScore += marksAwarded;
 
-          // Create MCQ result
+          // Create MCQ result with proper option text handling
           const mcqResult: MCQResult = {
             questionId: question.id || '',
             questionText: questionData.questionText || '',
-            selectedOption: answer.selectedOption as number,
-            selectedOptionText: question.options?.[answer.selectedOption as number] || '',
-            correctOption: question.correctOption || 0,
-            correctOptionText: question.options?.[question.correctOption || 0] || '',
+            selectedOption: selectedOptionIndex,
+            selectedOptionText: question.questionData?.options?.[selectedOptionIndex] 
+              ? getOptionText(question.questionData.options[selectedOptionIndex], selectedOptionIndex)
+              : 'No answer selected',
+            correctOption: correctOptionIndex,
+            correctOptionText: question.questionData?.options?.[correctOptionIndex] 
+              ? getOptionText(question.questionData.options[correctOptionIndex], correctOptionIndex)
+              : 'No correct option defined',
             isCorrect,
             marksAwarded,
             maxMarks: question.marks || 0,
@@ -240,17 +269,6 @@ export class SubmissionService {
             difficultyLevel: question.difficultyLevel || 'medium',
             topic: question.topic || ''
           };
-
-          // Debug logging for MCQ result creation
-          console.log('🎯 Creating MCQ Result:', {
-            questionId: question.id,
-            studentSelected: answer.selectedOption,
-            correctOptionFromQuestion: question.correctOption,
-            selectedText: question.options?.[answer.selectedOption as number],
-            correctText: question.options?.[question.correctOption || 0],
-            isCorrect,
-            questionOptions: question.options
-          });
 
           mcqResults.push(mcqResult);
         } else if (question.type === 'essay') {

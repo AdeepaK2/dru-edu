@@ -245,10 +245,38 @@ export class AttemptManagementService {
       const snapshot = await get(stateRef);
       
       if (!snapshot.exists()) {
-        throw new Error('Attempt state not found');
+        // If realtime state doesn't exist, try to reinitialize from Firestore attempt
+        console.warn(`⚠️ Realtime state not found for attempt ${attemptId}, attempting to reinitialize...`);
+        
+        // Get attempt from Firestore
+        const attemptDoc = await getDoc(doc(firestore, this.COLLECTIONS.ATTEMPTS, attemptId));
+        if (!attemptDoc.exists()) {
+          throw new Error('Attempt not found in Firestore');
+        }
+        
+        const attempt = attemptDoc.data() as TestAttempt;
+        
+        // Check if attempt is still valid (not expired)
+        if (attempt.status === 'submitted' || attempt.status === 'auto_submitted' || 
+            attempt.status === 'abandoned' || attempt.status === 'terminated') {
+          throw new Error('Attempt has already been completed or terminated');
+        }
+        
+        // Try to restart the attempt in realtime DB
+        await this.startAttempt(attemptId);
+        
+        // Retry getting the state
+        const retrySnapshot = await get(stateRef);
+        if (!retrySnapshot.exists()) {
+          throw new Error('Failed to reinitialize attempt state');
+        }
+        
+        console.log('✅ Successfully reinitialized realtime state for attempt:', attemptId);
       }
 
-      const state = snapshot.val() as RealtimeAttemptState;
+      // Get the state (either from original snapshot or retry snapshot)
+      const finalSnapshot = snapshot.exists() ? snapshot : await get(stateRef);
+      const state = finalSnapshot.val() as RealtimeAttemptState;
       
       // Calculate time spent in current session (only if online)
       let sessionTime = 0;

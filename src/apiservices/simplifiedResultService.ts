@@ -132,8 +132,31 @@ export class SimplifiedResultService {
     answer?: SimplifiedAnswer
   ): Promise<MCQResult> {
     
-    // Find correct option index
-    const correctOptionIndex = question.options.findIndex(opt => opt.isCorrect);
+    // Helper function to get option display text
+    const getOptionText = (option: any, index: number): string => {
+      if (option.text && option.text.trim()) {
+        return option.text;
+      }
+      return String.fromCharCode(65 + index); // A, B, C, D
+    };
+    
+    // Find correct option index - prefer using correctAnswer field if available
+    let correctOptionIndex = -1;
+    
+    if (question.correctAnswer) {
+      // Convert letter (A, B, C, D) to index (0, 1, 2, 3)
+      const correctLetter = question.correctAnswer.toUpperCase();
+      correctOptionIndex = correctLetter.charCodeAt(0) - 65; // A=0, B=1, C=2, D=3
+      
+      // Validate the index is within bounds
+      if (correctOptionIndex < 0 || correctOptionIndex >= question.options.length) {
+        console.warn(`⚠️ Invalid correctAnswer '${question.correctAnswer}' for question ${question.id}, falling back to isCorrect`);
+        correctOptionIndex = question.options.findIndex(opt => opt.isCorrect);
+      }
+    } else {
+      // Fallback to using isCorrect property on options
+      correctOptionIndex = question.options.findIndex(opt => opt.isCorrect);
+    }
     
     if (correctOptionIndex === -1) {
       console.warn(`⚠️ No correct option found for MCQ question: ${question.id}`);
@@ -146,6 +169,7 @@ export class SimplifiedResultService {
     console.log(`📊 MCQ Result for ${question.id}:`, {
       selectedOption,
       correctOptionIndex,
+      correctAnswer: question.correctAnswer,
       isCorrect,
       marksAwarded,
       maxMarks: question.points
@@ -156,11 +180,11 @@ export class SimplifiedResultService {
       questionText: question.title,
       selectedOption: selectedOption >= 0 ? selectedOption : 0,
       selectedOptionText: selectedOption >= 0 && selectedOption < question.options.length 
-        ? question.options[selectedOption].text 
+        ? getOptionText(question.options[selectedOption], selectedOption)
         : 'No answer selected',
       correctOption: correctOptionIndex >= 0 ? correctOptionIndex : 0,
       correctOptionText: correctOptionIndex >= 0 
-        ? question.options[correctOptionIndex].text 
+        ? getOptionText(question.options[correctOptionIndex], correctOptionIndex)
         : 'No correct option defined',
       isCorrect,
       marksAwarded,

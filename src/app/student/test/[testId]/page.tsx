@@ -293,7 +293,10 @@ export default function TestPage() {
       return timestamp.getTime() / 1000;
     } else if (typeof timestamp === 'string') {
       return new Date(timestamp).getTime() / 1000;
+    } else if (typeof timestamp === 'number') {
+      return timestamp > 1000000000000 ? timestamp / 1000 : timestamp; // Convert milliseconds to seconds if needed
     }
+    console.warn('⚠️ Unknown timestamp format in getSeconds:', timestamp);
     return 0;
   };
 
@@ -358,11 +361,11 @@ export default function TestPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Subject</p>
-                <p className="mt-1 text-gray-900 dark:text-white">{test.subjectName}</p>
+                <p className="mt-1 text-gray-900 dark:text-white">{test.subjectName || 'Unknown Subject'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Teacher</p>
-                <p className="mt-1 text-gray-900 dark:text-white">{test.teacherName}</p>
+                <p className="mt-1 text-gray-900 dark:text-white">{test.teacherName || 'Unknown Teacher'}</p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Test Type</p>

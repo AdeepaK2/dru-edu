@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, ArrowRight, ArrowLeft, Clock, Calendar, Users, BookOpen, AlertCircle, Settings, Target, Shuffle } from 'lucide-react';
+import { X, ArrowRight, ArrowLeft, Clock, Calendar, Users, BookOpen, AlertCircle, Settings, Target, FileText, Edit } from 'lucide-react';
 import { TestType, TestConfig, QuestionSelectionMethod } from '@/models/testSchema';
 import { QuestionBank, Question } from '@/models/questionBankSchema';
 import { LessonDocument } from '@/models/lessonSchema';
@@ -9,6 +9,7 @@ import { TestService } from '@/apiservices/testService';
 import { LessonFirestoreService } from '@/apiservices/lessonFirestoreService';
 import { questionService } from '@/apiservices/questionBankFirestoreService';
 import { TestNumberingService } from '@/apiservices/testNumberingService';
+import { useTeacherAuth } from '@/hooks/useTeacherAuth';
 import { Timestamp } from 'firebase/firestore';
 
 interface CreateTestModalProps {
@@ -35,7 +36,7 @@ interface TestFormData {
   description: string;
   instructions: string;
   type: TestType | '';
-  questionType: 'mcq' | 'essay' | 'mixed' | ''; // New field for question type selection
+  questionType: 'mcq' | 'essay' | ''; // New field for question type selection
 
   // Step 2: Timing & Duration
   // For flexible tests
@@ -110,6 +111,9 @@ export default function CreateTestModal({
   const [formData, setFormData] = useState<TestFormData>(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Get current teacher from auth context
+  const { teacher } = useTeacherAuth();
 
   // Debug question banks
   useEffect(() => {
@@ -150,7 +154,7 @@ export default function CreateTestModal({
     if (formData.selectedQuestionBankId && formData.questionSelectionMethod === 'manual') {
       loadQuestions();
     }
-  }, [formData.selectedQuestionBankId, formData.questionSelectionMethod]);
+  }, [formData.selectedQuestionBankId, formData.questionSelectionMethod, formData.questionType]);
 
   // Load existing test numbers when modal opens
   useEffect(() => {
@@ -191,8 +195,14 @@ export default function CreateTestModal({
         selectedBank.questionIds.map(id => questionService.getQuestion(id))
       );
       
-      // Filter out null questions
-      const validQuestions = questionsData.filter(q => q !== null) as Question[];
+      // Filter out null questions and filter by question type if specified
+      let validQuestions = questionsData.filter(q => q !== null) as Question[];
+      
+      // Filter by question type if a specific type is selected
+      if (formData.questionType) {
+        validQuestions = validQuestions.filter(q => q.type === formData.questionType);
+      }
+      
       setAvailableQuestions(validQuestions);
     } catch (error) {
       console.error('Error loading questions:', error);
@@ -307,6 +317,18 @@ export default function CreateTestModal({
         if (!formData.selectedQuestionBankId) newErrors.selectedQuestionBankId = 'Please select a question bank';
         if (formData.totalQuestions <= 0) newErrors.totalQuestions = 'Number of questions must be greater than 0';
         
+        // Validate question type availability in selected bank
+        if (formData.selectedQuestionBankId && formData.questionType) {
+          const selectedBank = questionBanks?.find(bank => bank.id === formData.selectedQuestionBankId);
+          if (selectedBank) {
+            if (formData.questionType === 'mcq' && selectedBank.mcqCount === 0) {
+              newErrors.selectedQuestionBankId = 'Selected question bank has no MCQ questions';
+            } else if (formData.questionType === 'essay' && selectedBank.essayCount === 0) {
+              newErrors.selectedQuestionBankId = 'Selected question bank has no essay questions';
+            }
+          }
+        }
+        
         // Only validate lesson/question selection if method is chosen
         if (formData.questionSelectionMethod === 'auto' && formData.selectedLessonIds.length === 0) {
           newErrors.selectedLessonIds = 'Please select at least one lesson for auto selection';
@@ -351,6 +373,7 @@ export default function CreateTestModal({
       // Build test data based on form
       const testConfig: TestConfig = {
         questionSelectionMethod: formData.questionSelectionMethod as QuestionSelectionMethod,
+        questionType: formData.questionType as 'mcq' | 'essay',
         totalQuestions: formData.totalQuestions,
         shuffleQuestions: formData.shuffleQuestions,
         showQuestionsOneByOne: formData.showQuestionsOneByOne,
@@ -359,6 +382,11 @@ export default function CreateTestModal({
         showResultsImmediately: formData.showResultsImmediately,
       };
 
+      // Calculate total marks based on selected questions or default to 1 per question
+      const totalMarks = formData.selectedQuestions && formData.selectedQuestions.length > 0
+        ? formData.selectedQuestions.reduce((sum, q) => sum + (q.points || 1), 0)
+        : formData.totalQuestions * 1; // Default fallback
+
       // Build base test data
       const baseTestData = {
         title: formData.testNumber ? 
@@ -366,8 +394,8 @@ export default function CreateTestModal({
           formData.title,
         description: formData.description || '', // Ensure not undefined
         instructions: formData.instructions || '', // Ensure not undefined
-        teacherId: '', // Will be set by TestService
-        teacherName: '', // Will be set by TestService
+        teacherId: teacher?.id || '', // Get from auth context
+        teacherName: teacher?.name || '', // Get from auth context
         subjectId: subjectId || '', // Ensure not undefined
         subjectName: subjectName || '', // Ensure not undefined
         classIds: selectedClassId ? [selectedClassId] : availableClasses.map(c => c.id),
@@ -376,12 +404,20 @@ export default function CreateTestModal({
           availableClasses.map(c => c.name),
         config: testConfig,
         questions: formData.selectedQuestions || [], // Ensure not undefined
-        totalMarks: formData.totalQuestions * 1, // Assuming 1 mark per question
+        totalMarks: totalMarks,
         status: 'draft' as const,
       };
       
       console.log('🔍 Base test data constructed:', baseTestData);
       console.log('🔍 Base test data keys:', Object.keys(baseTestData));
+      console.log('🔍 Teacher information:', { 
+        teacherId: teacher?.id, 
+        teacherName: teacher?.name,
+        teacherInBaseData: { 
+          teacherId: baseTestData.teacherId, 
+          teacherName: baseTestData.teacherName 
+        }
+      });
       
       // Check for undefined in base data
       const baseUndefinedFields = Object.entries(baseTestData).filter(([key, value]) => value === undefined);
@@ -458,15 +494,67 @@ export default function CreateTestModal({
         throw new Error(`Test data contains undefined fields: ${undefinedFields.map(([key]) => key).join(', ')}`);
       }
 
+      // Handle question selection based on method first
+      let autoSelectedQuestions: any[] = [];
+      if (formData.questionSelectionMethod === 'auto' && formData.selectedLessonIds.length > 0) {
+        console.log('🔍 Auto-selecting questions from lessons:', formData.selectedLessonIds);
+        
+        try {
+          // Find the selected question bank to get its name
+          const selectedBank = questionBanks.find(bank => bank.id === formData.selectedQuestionBankId);
+          if (!selectedBank) {
+            throw new Error('Selected question bank not found');
+          }
+          
+          console.log('🔍 Selected question bank:', selectedBank.name, 'ID:', selectedBank.id);
+          console.log('🔍 Question bank has', selectedBank.totalQuestions, 'total questions');
+          console.log('🔍 Question bank mcqCount:', selectedBank.mcqCount, 'essayCount:', selectedBank.essayCount);
+          console.log('🔍 Question bank questionIds:', selectedBank.questionIds?.length || 0, 'questions');
+          console.log('🔍 Desired question count:', formData.totalQuestions);
+          console.log('🔍 Selected lessons:', formData.selectedLessonIds);
+          console.log('🔍 Question type filter:', formData.questionType);
+          
+          // Build QuestionBankSelection for auto-selection
+          const questionBankSelection = {
+            bankId: formData.selectedQuestionBankId,
+            bankName: selectedBank.name,
+            lessonIds: formData.selectedLessonIds,
+            questionCount: formData.totalQuestions, // Fixed: was using totalQuestions
+            difficultyDistribution: undefined // Can be enhanced later
+          };
+          
+          console.log('🔍 Question bank selection params:', questionBankSelection);
+          
+          // Auto-select questions using TestService
+          autoSelectedQuestions = await TestService.autoSelectQuestions(
+            [questionBankSelection],
+            testConfig
+          );
+          
+          console.log('✅ Auto-selected questions count:', autoSelectedQuestions.length);
+          console.log('✅ Auto-selected questions details:', autoSelectedQuestions.map(q => ({
+            questionId: q.questionId,
+            title: q.title,
+            type: q.type,
+            topic: q.topic
+          })));
+          
+          if (autoSelectedQuestions.length === 0) {
+            throw new Error(`No questions found for the selected lessons. Please check if questions exist for the selected lessons in ${selectedBank.name}.`);
+          }
+          
+          // Update final test data with auto-selected questions
+          finalTestData.questions = autoSelectedQuestions;
+          finalTestData.totalMarks = autoSelectedQuestions.reduce((sum, q) => sum + q.points, 0);
+          
+        } catch (autoSelectError) {
+          console.error('❌ Error auto-selecting questions:', autoSelectError);
+          throw new Error(`Failed to auto-select questions from lessons: ${autoSelectError instanceof Error ? autoSelectError.message : 'Unknown error'}`);
+        }
+      }
+
       // Create the test
       const testId = await TestService.createTest(finalTestData as any); // Type assertion for now
-      
-      // Handle question selection based on method
-      if (formData.questionSelectionMethod === 'auto' && formData.selectedLessonIds.length > 0) {
-        // Auto-select questions from lessons
-        // This would need to be implemented in TestService
-        console.log('Auto-selecting questions from lessons:', formData.selectedLessonIds);
-      }
 
       console.log('Test created successfully:', testId);
       onTestCreated({ ...testData, id: testId });
@@ -767,6 +855,90 @@ export default function CreateTestModal({
                   )}
                 </div>
 
+                {/* Question Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                    Question Type <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    
+                    {/* MCQ Test */}
+                    <div
+                      onClick={() => updateFormData({ 
+                        questionType: 'mcq',
+                        selectedQuestions: [] // Reset selected questions when type changes
+                      })}
+                      className={`cursor-pointer p-4 border rounded-lg transition-all ${
+                        formData.questionType === 'mcq'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500'
+                          : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          formData.questionType === 'mcq'
+                            ? 'border-blue-500 bg-blue-500'
+                            : 'border-gray-300 dark:border-gray-600'
+                        }`}>
+                          {formData.questionType === 'mcq' && (
+                            <div className="w-2 h-2 bg-white rounded-full" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <FileText className="h-5 w-5 text-blue-600" />
+                            <h4 className="font-medium text-gray-900 dark:text-white">
+                              MCQ Test
+                            </h4>
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
+                            Multiple choice questions with automatic grading.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Essay Test */}
+                    <div
+                      onClick={() => updateFormData({ 
+                        questionType: 'essay',
+                        selectedQuestions: [] // Reset selected questions when type changes
+                      })}
+                      className={`cursor-pointer p-4 border rounded-lg transition-all ${
+                        formData.questionType === 'essay'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500'
+                          : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className={`mt-1 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          formData.questionType === 'essay'
+                            ? 'border-blue-500 bg-blue-500'
+                            : 'border-gray-300 dark:border-gray-600'
+                        }`}>
+                          {formData.questionType === 'essay' && (
+                            <div className="w-2 h-2 bg-white rounded-full" />
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Edit className="h-5 w-5 text-green-600" />
+                            <h4 className="font-medium text-gray-900 dark:text-white">
+                              Essay Test
+                            </h4>
+                          </div>
+                          <p className="text-sm text-gray-600 dark:text-gray-300">
+                            Written responses requiring manual grading.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  {errors.questionType && (
+                    <p className="mt-2 text-sm text-red-500">{errors.questionType}</p>
+                  )}
+                </div>
+
                 {/* Class Assignment Info */}
                 {selectedClassId ? (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
@@ -987,6 +1159,19 @@ export default function CreateTestModal({
                 <p className="text-gray-500 dark:text-gray-400">
                   Choose how to select questions for your test
                 </p>
+                {/* Question Type Reminder */}
+                {formData.questionType && (
+                  <div className="mt-4 inline-flex items-center space-x-2 px-3 py-1 bg-blue-100 dark:bg-blue-900/30 rounded-full text-sm">
+                    {formData.questionType === 'mcq' ? (
+                      <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    ) : (
+                      <Edit className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    )}
+                    <span className="text-blue-800 dark:text-blue-200 font-medium">
+                      {formData.questionType === 'mcq' ? 'MCQ Test' : 'Essay Test'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-6">
@@ -1017,17 +1202,60 @@ export default function CreateTestModal({
                   >
                     <option value="">Select a question bank...</option>
                     {questionBanks && questionBanks.length > 0 ? (
-                      questionBanks.map(bank => (
-                        <option key={bank.id} value={bank.id}>
-                          {bank.name} ({bank.totalQuestions} questions)
-                        </option>
-                      ))
+                      questionBanks.map(bank => {
+                        // Calculate type-specific question counts for display
+                        let displayText = `${bank.name} (${bank.totalQuestions} questions`;
+                        if (formData.questionType === 'mcq') {
+                          displayText = `${bank.name} (${bank.mcqCount} MCQ questions`;
+                        } else if (formData.questionType === 'essay') {
+                          displayText = `${bank.name} (${bank.essayCount} essay questions`;
+                        }
+                        displayText += ')';
+                        
+                        return (
+                          <option key={bank.id} value={bank.id}>
+                            {displayText}
+                          </option>
+                        );
+                      })
                     ) : (
                       <option disabled>No question banks available</option>
                     )}
                   </select>
                   {errors.selectedQuestionBankId && (
                     <p className="mt-1 text-sm text-red-500">{errors.selectedQuestionBankId}</p>
+                  )}
+                  
+                  {/* Warning when selected bank has no questions of selected type */}
+                  {formData.selectedQuestionBankId && formData.questionType && (
+                    (() => {
+                      const selectedBank = questionBanks?.find(bank => bank.id === formData.selectedQuestionBankId);
+                      const hasNoQuestions = selectedBank && (
+                        (formData.questionType === 'mcq' && selectedBank.mcqCount === 0) ||
+                        (formData.questionType === 'essay' && selectedBank.essayCount === 0)
+                      );
+                      
+                      if (hasNoQuestions) {
+                        return (
+                          <div className="mt-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                            <div className="flex items-start space-x-2">
+                              <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400 mt-0.5" />
+                              <div className="text-sm text-orange-800 dark:text-orange-200">
+                                <p className="font-medium">No {formData.questionType.toUpperCase()} Questions Available</p>
+                                <p className="mt-1">
+                                  The selected question bank "{selectedBank?.name}" has no {formData.questionType} questions. 
+                                  Please select a different question bank or choose a different question type.
+                                </p>
+                                <p className="mt-1 text-xs">
+                                  Available: {selectedBank?.mcqCount || 0} MCQ, {selectedBank?.essayCount || 0} Essay questions
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()
                   )}
                   
                   {/* Help message when no banks available */}
@@ -1128,7 +1356,7 @@ export default function CreateTestModal({
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-2">
-                            <Shuffle className="h-5 w-5 text-green-600" />
+                            <Target className="h-5 w-5 text-green-600" />
                             <h4 className="font-medium text-gray-900 dark:text-white">
                               Auto Selection (by Lesson)
                             </h4>
