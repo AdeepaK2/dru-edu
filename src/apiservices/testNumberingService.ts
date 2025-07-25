@@ -439,45 +439,67 @@ export class TestNumberingService {
     try {
       console.log('🔍 Getting test number suggestions for:', { classId, subjectId });
       
-      // Get current counter to see what the next number would be
-      const counterId = subjectId ? `${classId}_${subjectId}` : classId;
-      const counterRef = doc(firestore, 'class_test_counters', counterId);
-      const counterDoc = await getDoc(counterRef);
+      // Get existing tests for this class to extract test numbers from titles
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
       
-      let suggestedNumber = 1;
-      if (counterDoc.exists()) {
-        const counter = counterDoc.data() as ClassTestCounter;
-        suggestedNumber = counter.currentTestNumber;
-      }
-      
-      // Get all used test numbers for this class
-      const assignments = await this.getClassTestNumbers(classId);
-      let usedNumbers = assignments.map(a => a.testNumber).sort((a, b) => a - b);
-      
-      // If we have subject filtering, filter by subject
+      let testsQuery;
       if (subjectId) {
-        usedNumbers = assignments
-          .filter(a => a.subjectId === subjectId)
-          .map(a => a.testNumber)
-          .sort((a, b) => a - b);
+        // Filter by both class and subject
+        testsQuery = query(
+          collection(firestore, 'tests'),
+          where('classIds', 'array-contains', classId),
+          where('subjectId', '==', subjectId)
+        );
+      } else {
+        // Filter by class only
+        testsQuery = query(
+          collection(firestore, 'tests'),
+          where('classIds', 'array-contains', classId)
+        );
       }
+      
+      const testsSnapshot = await getDocs(testsQuery);
+      const tests = testsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      console.log('🔍 Found tests for class:', tests.length);
+      
+      // Extract test numbers from test titles
+      // Look for patterns like "Test 1", "Test 2", "(Test 3)", etc.
+      const testNumberPattern = /\(?\s*Test\s+(\d+)\s*\)?/i;
+      const usedNumbers: number[] = [];
+      
+      tests.forEach((test: any) => {
+        if (test.title) {
+          const match = test.title.match(testNumberPattern);
+          if (match && match[1]) {
+            const testNumber = parseInt(match[1], 10);
+            if (!isNaN(testNumber)) {
+              usedNumbers.push(testNumber);
+            }
+          }
+        }
+      });
+      
+      // Remove duplicates and sort
+      const uniqueUsedNumbers = [...new Set(usedNumbers)].sort((a, b) => a - b);
       
       // Find the next available number (in case there are gaps)
       let nextAvailable = 1;
-      const usedSet = new Set(usedNumbers);
+      const usedSet = new Set(uniqueUsedNumbers);
       while (usedSet.has(nextAvailable)) {
         nextAvailable++;
       }
       
       console.log('✅ Test number suggestions:', {
-        suggestedNumber,
-        usedNumbers,
-        nextAvailable
+        suggestedNumber: nextAvailable,
+        usedNumbers: uniqueUsedNumbers,
+        nextAvailable,
+        extractedFromTitles: tests.map((t: any) => ({ title: t.title, match: t.title?.match(testNumberPattern) }))
       });
       
       return {
-        suggestedNumber: Math.max(suggestedNumber, nextAvailable),
-        usedNumbers,
+        suggestedNumber: nextAvailable, // Always use the next available number
+        usedNumbers: uniqueUsedNumbers,
         nextAvailable
       };
       

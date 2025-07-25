@@ -79,7 +79,8 @@ export class AttemptManagementService {
     testId: string, 
     studentId: string, 
     studentName: string, 
-    classId: string
+    classId: string,
+    className?: string
   ): Promise<string> {
     try {
       console.log('🆕 Creating new attempt for test:', testId, 'student:', studentId);
@@ -91,6 +92,8 @@ export class AttemptManagementService {
       
       // Ensure classId is not undefined or empty
       const validClassId = classId && classId.trim() !== '' ? classId : 'unknown-class';
+      const validClassName = className && className.trim() !== '' ? className : 'Unknown Class';
+      
       if (validClassId === 'unknown-class') {
         console.warn('⚠️ Using fallback classId for attempt creation');
       }
@@ -122,6 +125,7 @@ export class AttemptManagementService {
         studentId: studentId,
         studentName: studentName || 'Anonymous Student',
         classId: validClassId,
+        className: validClassName,
         attemptNumber: summary.totalAttempts + 1,
         status: 'not_started',
         

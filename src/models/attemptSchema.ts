@@ -23,6 +23,7 @@ export interface TestAttempt {
   studentId: string;
   studentName: string;
   classId: string;
+  className?: string;
   
   // Attempt tracking
   attemptNumber: number; // 1, 2, 3, etc.

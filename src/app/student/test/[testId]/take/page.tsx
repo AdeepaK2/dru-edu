@@ -421,7 +421,20 @@ export default function TestTakePage() {
           console.warn('⚠️ No matching enrollment found, using fallback classId:', classId);
         }
         
+        // Get the class name as well
+        let className = 'Unknown Class';
+        if (enrollment) {
+          className = enrollment.className || 'Unknown Class';
+        } else {
+          // Try to find class name from test data
+          const testClassIndex = testData.classIds.indexOf(classId);
+          if (testClassIndex >= 0 && testData.classNames && testData.classNames[testClassIndex]) {
+            className = testData.classNames[testClassIndex];
+          }
+        }
+        
         console.log('🎯 Selected classId for attempt:', classId);
+        console.log('🎯 Selected className for attempt:', className);
         
         // Debug timestamp data
         console.log('🔍 Test data type:', testData.type);
@@ -571,7 +584,8 @@ export default function TestTakePage() {
             testId,
             student.id,
             student.name || 'Anonymous Student',
-            classId
+            classId,
+            className
           );
           
           console.log('✅ New attempt created:', newAttemptId);

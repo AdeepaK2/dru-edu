@@ -22,6 +22,7 @@ import {
   RealtimeTestSession 
 } from '@/models/studentSubmissionSchema';
 import { Test, TestQuestion } from '@/models/testSchema';
+import { TestAttempt } from '@/models/attemptSchema';
 import { TestService } from './testService';
 import { RealtimeTestService } from './realtimeTestService';
 import { AttemptManagementService } from './attemptManagementService';
@@ -83,10 +84,16 @@ export class SubmissionService {
       }
       const test = { id: testDoc.id, ...testDoc.data() } as Test;
 
-      // Get attempt information to determine correct attempt number
+      // Get attempt information to determine correct attempt number and class info
       const attemptInfo = await AttemptManagementService.getAttemptSummary(realtimeSession.testId, realtimeSession.studentId);
       
+      // Get the actual attempt to get className
+      const { getDoc: getDocFromFirestore, doc: docFromFirestore } = await import('firebase/firestore');
+      const attemptDoc = await getDocFromFirestore(docFromFirestore(firestore, 'attempts', attemptId));
+      const attemptData = attemptDoc.exists() ? attemptDoc.data() as TestAttempt : null;
+      
       console.log('📊 Attempt info for submission:', attemptInfo);
+      console.log('📊 Attempt data for submission:', attemptData);
 
       // Process answers and calculate scores
       const { finalAnswers, mcqResults, autoGradedScore, manualGradingPending } = 
@@ -106,7 +113,7 @@ export class SubmissionService {
         studentName: realtimeSession.studentName || '',
         studentEmail: '', // Would get from student profile
         classId: realtimeSession.classId || '',
-        className: '', // Would get from class data
+        className: attemptData?.className || 'Unknown Class',
         
         // Attempt details
         attemptNumber: attemptInfo.totalAttempts + 1,

@@ -229,18 +229,18 @@ export default function CreateTestModal({
       setUsedTestNumbers(suggestions.usedNumbers);
       setExistingTestNumbers(new Set(suggestions.usedNumbers.map(String)));
       
-      // Auto-fill the suggested number if no number is set
-      if (!formData.testNumber) {
-        updateFormData({ testNumber: suggestions.suggestedNumber.toString() });
-      }
+      // Always auto-assign the suggested number
+      updateFormData({ testNumber: suggestions.suggestedNumber.toString() });
       
-      console.log('📋 Test number suggestions loaded:', suggestions);
+      console.log('📋 Test number auto-assigned:', suggestions);
       
     } catch (error) {
       console.error('Error loading test numbers:', error);
       setExistingTestNumbers(new Set());
       setSuggestedTestNumber(1);
       setUsedTestNumbers([]);
+      // Auto-assign 1 as fallback
+      updateFormData({ testNumber: '1' });
     } finally {
       setLoadingTestNumbers(false);
     }
@@ -277,10 +277,7 @@ export default function CreateTestModal({
         if (!formData.title.trim()) newErrors.title = 'Test title is required';
         if (!formData.type) newErrors.type = 'Test type is required';
         if (!formData.questionType) newErrors.questionType = 'Question type is required';
-        // Test number validation for selected class (only if testNumber is provided)
-        if (selectedClassId && formData.testNumber && usedTestNumbers.includes(parseInt(formData.testNumber))) {
-          newErrors.testNumber = 'This test number is already taken';
-        }
+        // Test numbers are auto-assigned, no validation needed
         console.log('🔍 Step 1 validation errors:', newErrors);
         break;
         
@@ -389,8 +386,8 @@ export default function CreateTestModal({
 
       // Build base test data
       const baseTestData = {
-        title: formData.testNumber ? 
-          `${formData.title} ${formData.testNumber ? `(Test ${formData.testNumber})` : ''}` : 
+        title: formData.testNumber && selectedClassId ? 
+          `${formData.title} (Test ${formData.testNumber})` : 
           formData.title,
         description: formData.description || '', // Ensure not undefined
         instructions: formData.instructions || '', // Ensure not undefined
@@ -660,34 +657,27 @@ export default function CreateTestModal({
                 {selectedClassId && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Test Number (Optional)
+                      Test Number (Auto-assigned)
                     </label>
                     
-                    {/* Suggested Number Display */}
+                    {/* Auto-assigned Number Display */}
                     {!loadingTestNumbers && (
-                      <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="mb-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
                             <div className="flex items-center space-x-1">
-                              <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-                                Suggested:
+                              <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                                Auto-assigned Number:
                               </span>
-                              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 rounded text-sm font-medium">
+                              <span className="px-2 py-1 bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200 rounded text-sm font-medium">
                                 {suggestedTestNumber}
                               </span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => updateFormData({ testNumber: suggestedTestNumber.toString() })}
-                              className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200 underline"
-                            >
-                              Use this number
-                            </button>
                           </div>
                           
                           {usedTestNumbers.length > 0 && (
                             <div className="flex items-center space-x-2">
-                              <span className="text-xs text-gray-600 dark:text-gray-400">Used:</span>
+                              <span className="text-xs text-gray-600 dark:text-gray-400">Previously used:</span>
                               <div className="flex flex-wrap gap-1">
                                 {usedTestNumbers.slice(0, 5).map(num => (
                                   <span 
@@ -709,15 +699,14 @@ export default function CreateTestModal({
                       </div>
                     )}
                     
-                    {/* Input Field */}
+                    {/* Read-only Input Field */}
                     <div className="flex items-center space-x-3">
                       <input
                         type="text"
-                        value={formData.testNumber}
-                        onChange={(e) => updateFormData({ testNumber: e.target.value })}
-                        className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
-                          errors.testNumber ? 'border-red-500' : 'border-gray-300'
-                        }`}
+                        value={formData.testNumber || suggestedTestNumber.toString()}
+                        readOnly
+                        disabled
+                        className="flex-1 px-3 py-2 border rounded-lg bg-gray-50 dark:bg-gray-600 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 cursor-not-allowed"
                         placeholder={loadingTestNumbers ? "Loading..." : suggestedTestNumber.toString()}
                       />
                       
@@ -737,12 +726,8 @@ export default function CreateTestModal({
                       )}
                     </div>
                     
-                    {errors.testNumber && (
-                      <p className="mt-1 text-sm text-red-500">{errors.testNumber}</p>
-                    )}
-                    
                     <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      Choose a unique number for this test. Numbers are automatically suggested based on existing tests.
+                      Test numbers are automatically assigned to ensure they are unique and sequential for this class.
                     </p>
                   </div>
                 )}
