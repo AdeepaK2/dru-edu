@@ -9,7 +9,8 @@ import {
 import { useStudentAuth } from '@/hooks/useStudentAuth';
 import { Button, Input, TextArea } from '@/components/ui';
 import { Test, LiveTest, FlexibleTest, TestQuestion } from '@/models/testSchema';
-import { RealtimeAnswer } from '@/models/studentSubmissionSchema';
+import { RealtimeAnswer, PdfAttachment } from '@/models/studentSubmissionSchema';
+import { PdfUploadComponent } from '@/components/student/PdfUploadComponent';
 import { v4 as uuidv4 } from 'uuid';
 
 // Import student layout from other components or use a local version for now
@@ -47,6 +48,9 @@ export default function TestTakePage() {
   
   // Navigation panel state
   const [showNavPanel, setShowNavPanel] = useState(false);
+  
+  // PDF upload state
+  const [pdfFiles, setPdfFiles] = useState<Record<string, PdfAttachment[]>>({});
   
   // References for tracking time spent on questions
   const questionStartTimeRef = useRef<number>(Date.now());
@@ -308,6 +312,54 @@ export default function TestTakePage() {
     const secs = seconds % 60;
     
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Load existing PDF files for all questions
+  const loadExistingPdfFiles = async (testAttemptId: string, testData: Test) => {
+    try {
+      if (!student?.id) return;
+
+      const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
+      
+      // Get the test session which includes answers
+      const session = await RealtimeTestService.getSession(testAttemptId);
+      
+      if (!session?.answers) {
+        console.log('📁 No session answers found yet');
+        return;
+      }
+      
+      // Extract PDF files from essay answers and update both states
+      const pdfMap: Record<string, PdfAttachment[]> = {};
+      const answersToUpdate: Record<string, RealtimeAnswer> = {};
+      
+      for (const question of testData.questions) {
+        const sessionAnswer = session.answers[question.id];
+        if (question.type === 'essay' && sessionAnswer) {
+          // Update PDF files state
+          if (sessionAnswer.pdfFiles && sessionAnswer.pdfFiles.length > 0) {
+            pdfMap[question.id] = sessionAnswer.pdfFiles;
+          }
+          
+          // Update answers state with the full answer data
+          answersToUpdate[question.id] = sessionAnswer;
+        }
+      }
+      
+      // Update both states
+      setPdfFiles(pdfMap);
+      if (Object.keys(answersToUpdate).length > 0) {
+        setAnswers(prev => ({
+          ...prev,
+          ...answersToUpdate
+        }));
+      }
+      
+      console.log('📁 Loaded existing PDF files:', pdfMap);
+      console.log('📝 Updated answers state with PDFs:', Object.keys(answersToUpdate));
+    } catch (error) {
+      console.error('Error loading existing PDF files:', error);
+    }
   };
 
   // Load test data
@@ -607,6 +659,9 @@ export default function TestTakePage() {
         
         console.log('✅ Test session started successfully');
         
+        // Load existing PDF files for resumed attempts
+        await loadExistingPdfFiles(newAttemptId, testData);
+        
         setLoading(false);
       } catch (error) {
         console.error('Error loading test:', error);
@@ -688,22 +743,29 @@ export default function TestTakePage() {
       const questionId = currentQuestion.id;
       const timeSpent = timeSpentRef.current[questionId] || 0;
       
-      // Ensure answer is not undefined - convert to empty string for essays, 0 for MCQ
+      // Handle different answer types
       let cleanAnswer = answer;
+      let pdfFiles: PdfAttachment[] = [];
+      
       if (answer === undefined || answer === null) {
         cleanAnswer = currentQuestion.type === 'essay' ? '' : 0;
+      } else if (typeof answer === 'object' && answer.textContent !== undefined) {
+        // Essay answer with PDF files
+        cleanAnswer = answer.textContent || '';
+        pdfFiles = answer.pdfFiles || [];
       }
       
       // Import service
       const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
       
-      // Save to Realtime DB
+      // Save to Realtime DB - extend to support PDF files
       await RealtimeTestService.saveAnswer(
         attemptId,
         questionId,
         cleanAnswer,
         currentQuestion.type,
-        timeSpent
+        timeSpent,
+        pdfFiles // Pass PDF files as additional parameter
       );
       
       // Update local state
@@ -727,11 +789,12 @@ export default function TestTakePage() {
         ]
       };
 
-      // Add type-specific properties only if they have values
+      // Add type-specific properties
       if (currentQuestion.type === 'mcq') {
         updatedAnswer.selectedOption = cleanAnswer;
       } else if (currentQuestion.type === 'essay') {
         updatedAnswer.textContent = cleanAnswer;
+        updatedAnswer.pdfFiles = pdfFiles;
       }
       
       setAnswers(prev => ({
@@ -870,6 +933,76 @@ export default function TestTakePage() {
       }));
     } catch (error) {
       console.error('Error toggling review mark:', error);
+    }
+  };
+
+  // Handle PDF upload for essay questions - called by PdfUploadComponent
+  const handlePdfUpload = async (attachment: PdfAttachment) => {
+    try {
+      if (!currentQuestion) return;
+      
+      const questionId = currentQuestion.id;
+
+      // Update local PDF files state
+      setPdfFiles(prev => {
+        const existingFiles = prev[questionId] || [];
+        return {
+          ...prev,
+          [questionId]: [...existingFiles, attachment]
+        };
+      });
+
+      // Update the answer with the new PDF file
+      const currentAnswerText = answers[questionId]?.textContent || '';
+      const updatedPdfFiles = [
+        ...(answers[questionId]?.pdfFiles || []),
+        attachment
+      ];
+
+      // Save the updated answer with PDF files
+      await saveAnswer({
+        textContent: currentAnswerText,
+        pdfFiles: updatedPdfFiles
+      });
+
+      console.log('PDF uploaded successfully:', attachment);
+    } catch (error) {
+      console.error('Error handling PDF upload:', error);
+    }
+  };
+
+  // Handle PDF removal for essay questions - called by PdfUploadComponent
+  const handlePdfRemove = async (fileUrl: string) => {
+    try {
+      if (!currentQuestion) return;
+      
+      const questionId = currentQuestion.id;
+
+      // Import the PDF service and delete the file
+      const { StudentPdfService } = await import('@/apiservices/studentPdfService');
+      await StudentPdfService.deletePdf(fileUrl);
+
+      // Update local PDF files state
+      setPdfFiles(prev => ({
+        ...prev,
+        [questionId]: (prev[questionId] || []).filter(file => file.fileUrl !== fileUrl)
+      }));
+
+      // Update the answer with the removed PDF file
+      const currentAnswerText = answers[questionId]?.textContent || '';
+      const updatedPdfFiles = (answers[questionId]?.pdfFiles || []).filter(
+        file => file.fileUrl !== fileUrl
+      );
+
+      // Save the updated answer with remaining PDF files
+      await saveAnswer({
+        textContent: currentAnswerText,
+        pdfFiles: updatedPdfFiles
+      });
+
+      console.log('PDF removed successfully:', fileUrl);
+    } catch (error) {
+      console.error('Error removing PDF:', error);
     }
   };
 
@@ -1275,6 +1408,69 @@ export default function TestTakePage() {
   const renderEssay = (question: TestQuestion) => {
     const currentAnswer = answers[question.id];
     const textContent = currentAnswer?.textContent || '';
+    const pdfFiles = currentAnswer?.pdfFiles || [];
+    
+    // Handle PDF file upload
+    const handlePdfUpload = (attachment: PdfAttachment) => {
+      if (!student?.id) return;
+      
+      setAnswers(prev => ({
+        ...prev,
+        [question.id]: {
+          ...prev[question.id],
+          questionId: question.id,
+          pdfFiles: [...(prev[question.id]?.pdfFiles || []), attachment],
+          lastModified: Date.now(),
+          timeSpent: prev[question.id]?.timeSpent || 0,
+          isMarkedForReview: prev[question.id]?.isMarkedForReview || false,
+          changeHistory: [
+            ...(prev[question.id]?.changeHistory || []),
+            {
+              timestamp: Date.now(),
+              type: 'pdf_upload',
+              newValue: attachment.fileName,
+              timeOnQuestion: 0, // TODO: Track time properly
+              pdfInfo: {
+                fileName: attachment.fileName,
+                fileSize: attachment.fileSize
+              }
+            }
+          ]
+        }
+      }));
+      
+      // Auto-save the answer with PDF
+      saveAnswer({ textContent, pdfFiles: [...pdfFiles, attachment] });
+    };
+    
+    // Handle PDF file removal
+    const handlePdfRemove = (fileUrl: string) => {
+      const updatedFiles = pdfFiles.filter(file => file.fileUrl !== fileUrl);
+      
+      setAnswers(prev => ({
+        ...prev,
+        [question.id]: {
+          ...prev[question.id],
+          questionId: question.id,
+          pdfFiles: updatedFiles,
+          lastModified: Date.now(),
+          timeSpent: prev[question.id]?.timeSpent || 0,
+          isMarkedForReview: prev[question.id]?.isMarkedForReview || false,
+          changeHistory: [
+            ...(prev[question.id]?.changeHistory || []),
+            {
+              timestamp: Date.now(),
+              type: 'pdf_remove',
+              previousValue: fileUrl,
+              timeOnQuestion: 0, // TODO: Track time properly
+            }
+          ]
+        }
+      }));
+      
+      // Auto-save the answer without the removed PDF
+      saveAnswer({ textContent, pdfFiles: updatedFiles });
+    };
     
     return (
       <div className="space-y-6">
@@ -1305,7 +1501,12 @@ export default function TestTakePage() {
                 ...prev,
                 [question.id]: {
                   ...prev[question.id],
-                  textContent: newValue
+                  textContent: newValue,
+                  questionId: question.id,
+                  lastModified: Date.now(),
+                  timeSpent: prev[question.id]?.timeSpent || 0,
+                  isMarkedForReview: prev[question.id]?.isMarkedForReview || false,
+                  changeHistory: prev[question.id]?.changeHistory || []
                 }
               }));
               handleEssayChange(newValue);
@@ -1313,6 +1514,53 @@ export default function TestTakePage() {
             placeholder="Type your answer here..."
             className="min-h-[250px]"
           />
+        </div>
+        
+        {/* PDF Upload Section */}
+        <div className="mt-6">
+          <div className="border-t border-gray-200 dark:border-gray-600 pt-6">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+              Upload Supporting Documents (Optional)
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              You can upload PDF documents to support your written answer. This is useful for 
+              diagrams, calculations, or handwritten work.
+            </p>
+            
+            {student?.id && currentQuestion && (() => {
+              // Get PDF files from both sources to ensure we have the most up-to-date list
+              const pdfFilesFromState: PdfAttachment[] = (pdfFiles as any)[currentQuestion.id] || [];
+              const pdfFilesFromAnswers: PdfAttachment[] = answers[currentQuestion.id]?.pdfFiles || [];
+              
+              // Merge and deduplicate based on fileUrl
+              const allPdfFiles = [...pdfFilesFromState, ...pdfFilesFromAnswers];
+              const uniquePdfFiles = allPdfFiles.filter((pdf, index, self) => 
+                index === self.findIndex(p => p.fileUrl === pdf.fileUrl)
+              );
+              
+              console.log('🔍 PDF Upload Component Debug:', {
+                questionId: currentQuestion.id,
+                pdfFilesFromState,
+                pdfFilesFromAnswers,
+                uniquePdfFiles,
+                pdfFilesState: pdfFiles,
+                answersForQuestion: answers[currentQuestion.id]
+              });
+              
+              return (
+                <PdfUploadComponent
+                  questionId={currentQuestion.id}
+                  attemptId={attemptId}
+                  studentId={student.id}
+                  existingFiles={uniquePdfFiles}
+                  onFileUpload={handlePdfUpload}
+                  onFileRemove={handlePdfRemove}
+                  disabled={timeExpired}
+                  maxFiles={3}
+                />
+              );
+            })()}
+          </div>
         </div>
       </div>
     );

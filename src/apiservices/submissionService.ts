@@ -218,6 +218,7 @@ export class SubmissionService {
           selectedOptionText: question.type === 'mcq' && answer.selectedOption !== undefined 
             ? question.options?.[answer.selectedOption as number] || '' : '',
           textContent: answer.textContent || '',
+          pdfFiles: answer.pdfFiles || [], // Include PDF files for essay questions
           timeSpent: answer.timeSpent || 0,
           changeCount: answer.changeHistory?.length || 0,
           wasReviewed: answer.isMarkedForReview || false
@@ -493,6 +494,105 @@ export class SubmissionService {
       console.log('✅ Batch processing completed for test:', testId);
     } catch (error) {
       console.error('Error batch processing submissions:', error);
+      throw error;
+    }
+  }
+
+  // Get submissions by test ID for marking
+  static async getSubmissionsByTest(testId: string): Promise<StudentSubmission[]> {
+    try {
+      console.log('🔍 Loading submissions for test:', testId);
+      
+      const submissionsRef = collection(firestore, this.COLLECTIONS.SUBMISSIONS);
+      const q = query(submissionsRef, where('testId', '==', testId));
+      const snapshot = await getDocs(q);
+      
+      const submissions: StudentSubmission[] = [];
+      
+      for (const docSnapshot of snapshot.docs) {
+        const data = docSnapshot.data() as StudentSubmission;
+        
+        // Try to get student details if missing
+        let studentName = data.studentName || 'Unknown Student';
+        let studentEmail = data.studentEmail || 'unknown@email.com';
+        
+        // If student info is missing, try to fetch from students collection
+        if (!data.studentName || !data.studentEmail || data.studentName === '' || data.studentEmail === '') {
+          try {
+            const { doc: docRef, getDoc: getDocFirestore } = await import('firebase/firestore');
+            const studentDoc = await getDocFirestore(docRef(firestore, 'students', data.studentId));
+            
+            if (studentDoc.exists()) {
+              const studentData = studentDoc.data();
+              studentName = studentData.name || studentData.firstName || data.studentName || 'Unknown Student';
+              studentEmail = studentData.email || data.studentEmail || 'unknown@email.com';
+            }
+          } catch (studentError) {
+            console.warn('Could not fetch student details for:', data.studentId, studentError);
+          }
+        }
+        
+        submissions.push({
+          ...data,
+          id: docSnapshot.id,
+          studentName,
+          studentEmail
+        });
+      }
+      
+      console.log('✅ Found submissions:', submissions.length);
+      return submissions;
+    } catch (error) {
+      console.error('Error getting submissions by test:', error);
+      throw error;
+    }
+  }
+
+  // Update essay grades for a submission
+  static async updateEssayGrades(submissionId: string, grades: Array<{questionId: string, score: number, maxScore: number, feedback: string}>): Promise<void> {
+    try {
+      console.log('💾 Updating essay grades for submission:', submissionId);
+      
+      const submissionRef = doc(firestore, this.COLLECTIONS.SUBMISSIONS, submissionId);
+      const submissionDoc = await getDoc(submissionRef);
+      
+      if (!submissionDoc.exists()) {
+        throw new Error('Submission not found');
+      }
+      
+      const submission = submissionDoc.data() as StudentSubmission;
+      
+      // Update essay results
+      const essayResults: EssayResult[] = grades.map(grade => ({
+        questionId: grade.questionId,
+        questionText: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.questionText || '',
+        studentAnswer: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.textContent || '',
+        wordCount: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.textContent?.split(' ').length || 0,
+        marksAwarded: grade.score,
+        maxMarks: grade.maxScore,
+        feedback: grade.feedback,
+        gradedBy: 'teacher', // TODO: Get actual teacher ID from context
+        gradedAt: Timestamp.now()
+      }));
+      
+      // Calculate total score
+      const essayScore = grades.reduce((sum, grade) => sum + grade.score, 0);
+      const totalScore = (submission.autoGradedScore || 0) + essayScore;
+      const percentage = Math.round((totalScore / submission.maxScore) * 100);
+      
+      // Update submission
+      await updateDoc(submissionRef, {
+        essayResults,
+        totalScore,
+        percentage,
+        passStatus: percentage >= 60 ? 'passed' : 'failed',
+        manualGradingPending: false,
+        updatedAt: Timestamp.now()
+      });
+      
+      console.log('✅ Essay grades updated successfully');
+    } catch (error) {
+      console.error('Error updating essay grades:', error);
       throw error;
     }
   }

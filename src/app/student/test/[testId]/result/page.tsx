@@ -720,8 +720,8 @@ export default function TestResultPage() {
                   {submission.percentage !== undefined ? `${submission.percentage}%` : 'Pending'}
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  {submission.autoGradedScore !== undefined 
-                    ? `${submission.autoGradedScore}/${submission.maxScore} marks`
+                  {submission.totalScore !== undefined 
+                    ? `${submission.totalScore}/${submission.maxScore} marks`
                     : 'Score pending'
                   }
                 </p>
@@ -847,8 +847,8 @@ export default function TestResultPage() {
                             <span>
                               {answer.questionType === 'mcq' 
                                 ? `${mcqResult?.marksAwarded || 0}/${mcqResult?.maxMarks || answer.questionMarks} marks`
-                                : essayResult
-                                  ? `${essayResult.marksAwarded || 0}/${essayResult.maxMarks} marks`
+                                : essayResult && essayResult.marksAwarded !== undefined
+                                  ? `${essayResult.marksAwarded}/${essayResult.maxMarks} marks`
                                   : `${answer.questionMarks} marks (pending)`
                               }
                             </span>

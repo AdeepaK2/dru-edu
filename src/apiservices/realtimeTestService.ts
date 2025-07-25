@@ -129,7 +129,8 @@ export class RealtimeTestService {
     questionId: string,
     answer: any,
     questionType: 'mcq' | 'essay',
-    timeSpent: number
+    timeSpent: number,
+    pdfFiles?: any[] // Optional PDF files for essays
   ): Promise<void> {
     try {
       const db = this.init();
@@ -169,6 +170,10 @@ export class RealtimeTestService {
         updatedAnswer.selectedOption = cleanAnswer;
       } else if (questionType === 'essay') {
         updatedAnswer.textContent = cleanAnswer;
+        // Add PDF files if provided
+        if (pdfFiles && pdfFiles.length > 0) {
+          updatedAnswer.pdfFiles = pdfFiles;
+        }
       }
 
       // Clean the updatedAnswer object to remove any undefined values

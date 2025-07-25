@@ -22,6 +22,7 @@ import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
 import { StudentFirestoreService } from '@/apiservices/studentFirestoreService';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { ClassDocument } from '@/models/classSchema';
+import { FirestoreOptimizer } from '@/utils/teacher-performance';
 
 interface ClassWithStats extends ClassDocument {
   studentCount: number;
@@ -57,8 +58,8 @@ export default function TeacherClasses() {
         const classesWithStats = await Promise.all(
           teacherClasses.map(async (classDoc) => {
             try {
-              // Get student count for this class
-              const students = await StudentFirestoreService.getStudentsByClass(classDoc.id);
+              // Use optimized student query with enrollment system
+              const students = await FirestoreOptimizer.getStudentsByClassOptimized(classDoc.id);
               const studentCount = students.length;
               
               // Calculate next class time

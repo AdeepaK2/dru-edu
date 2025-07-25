@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   Users, 
   BookOpen, 
@@ -17,12 +17,14 @@ import { Button } from '@/components/ui';
 import { useTeacherAuth } from '@/hooks/useTeacherAuth';
 import TeacherLayout from '@/components/teacher/TeacherLayout';
 import Link from 'next/link';
+import { useTeacherNavigation } from '@/hooks/useTeacherNavigation';
 
 export default function TeacherDashboard() {
   const { teacher } = useTeacherAuth();
+  const { preloadRoute } = useTeacherNavigation();
 
-  // Get current date and time in Melbourne timezone
-  const getMelbourneDateTime = () => {
+  // Get current date and time in Melbourne timezone - memoized for performance
+  const melbourneDateTime = useMemo(() => {
     return new Intl.DateTimeFormat('en-AU', {
       timeZone: 'Australia/Melbourne',
       weekday: 'long',
@@ -32,25 +34,27 @@ export default function TeacherDashboard() {
       hour: '2-digit',
       minute: '2-digit'
     }).format(new Date());
-  };
+  }, []);
 
-  // Mock data - replace with real data later
-  const dashboardStats = {
+  // Memoized dashboard stats to prevent unnecessary recalculations
+  const dashboardStats = useMemo(() => ({
     totalClasses: teacher?.classesAssigned || 3,
     totalStudents: teacher?.studentsCount || 45,
     pendingTests: 2,
     videosUploaded: 12,
     avgGrade: 85.4
-  };
+  }), [teacher]);
 
-  const recentActivities = [
+  // Memoized activities data
+  const recentActivities = useMemo(() => [
     { id: 1, type: 'test', description: 'New test results available for Grade 10 Math', time: '2 hours ago' },
     { id: 2, type: 'video', description: 'Uploaded new lesson video: Algebra Basics', time: '1 day ago' },
     { id: 3, type: 'grade', description: 'Graded 15 assignments for Grade 9 Math', time: '2 days ago' },
     { id: 4, type: 'class', description: 'Upcoming class: Grade 10 Advanced Math', time: 'Tomorrow 9:00 AM' }
-  ];
+  ], []);
 
-  const quickActions = [
+  // Memoized quick actions with preloading
+  const quickActions = useMemo(() => [
     { 
       id: 'classes', 
       title: 'View My Classes', 
@@ -83,7 +87,7 @@ export default function TeacherDashboard() {
       href: '/teacher/questions',
       color: 'bg-orange-500'
     }
-  ];
+  ], []);
 
   return (
     <TeacherLayout>
@@ -100,7 +104,7 @@ export default function TeacherDashboard() {
               </p>
               <div className="flex items-center space-x-2 text-blue-100">
                 <Clock className="w-4 h-4" />
-                <span className="text-sm">{getMelbourneDateTime()}</span>
+                <span className="text-sm">{melbourneDateTime}</span>
               </div>
             </div>
             <div className="hidden md:block">
@@ -198,6 +202,7 @@ export default function TeacherDashboard() {
                     key={action.id}
                     href={action.href}
                     className="group p-4 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-500 transition-all duration-200 hover:shadow-md"
+                    onMouseEnter={() => preloadRoute(action.href)}
                   >
                     <div className="flex items-start space-x-3">
                       <div className={`w-10 h-10 ${action.color} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform`}>

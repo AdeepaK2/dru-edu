@@ -8,19 +8,30 @@ export interface RealtimeAnswer {
   questionId: string;
   selectedOption?: number | string; // for MCQ
   textContent?: string; // for essay
+  pdfFiles?: PdfAttachment[]; // for essay with PDF attachments
   lastModified: number; // timestamp in milliseconds
   timeSpent: number; // seconds spent on this question
   isMarkedForReview: boolean;
   changeHistory: AnswerChange[];
 }
 
+// PDF attachment for essay answers
+export interface PdfAttachment {
+  fileName: string;
+  fileUrl: string;
+  fileSize: number; // in bytes
+  uploadedAt: number; // timestamp in milliseconds
+  uploadStatus: 'uploading' | 'completed' | 'error';
+}
+
 // Track every change made to an answer
 export interface AnswerChange {
   timestamp: number; // milliseconds
-  type: 'select' | 'deselect' | 'text_change' | 'mark_review' | 'unmark_review';
+  type: 'select' | 'deselect' | 'text_change' | 'mark_review' | 'unmark_review' | 'pdf_upload' | 'pdf_remove';
   previousValue?: any;
   newValue?: any;
   timeOnQuestion: number; // how long they've been on this question
+  pdfInfo?: { fileName: string; fileSize: number }; // for PDF-related changes
 }
 
 // Real-time test session (stored in Realtime DB during test)
@@ -148,6 +159,7 @@ export interface FinalAnswer {
   selectedOption?: number; // for MCQ (option index)
   selectedOptionText?: string; // for display
   textContent?: string; // for essay
+  pdfFiles?: PdfAttachment[]; // for essay with PDF attachments
   
   // Metadata
   timeSpent: number; // seconds

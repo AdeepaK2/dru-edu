@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Menu } from 'lucide-react';
 import { useTeacherAuth } from '@/hooks/useTeacherAuth';
 import TeacherSidebar from '@/components/teacher/TeacherSidebar';
+import TeacherLoadingBar from '@/components/teacher/TeacherLoadingBar';
 import { Button } from '@/components/ui';
+import { optimizeTeacherNavigation } from '@/utils/teacher-performance';
+import { useTeacherNavigation } from '@/hooks/useTeacherNavigation';
 
 interface TeacherLayoutProps {
   children: React.ReactNode;
@@ -13,20 +16,29 @@ interface TeacherLayoutProps {
 export default function TeacherLayout({ children }: TeacherLayoutProps) {
   const { teacher, loading, error, isAuthenticated } = useTeacherAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isNavigating } = useTeacherNavigation();
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-t-2 border-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-300">Loading...</p>
-        </div>
+  // Initialize performance optimizations
+  useEffect(() => {
+    optimizeTeacherNavigation();
+  }, []);
+
+  // Loading component for better UX
+  const LoadingSpinner = () => (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-8 h-8 border-t-2 border-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-gray-600 dark:text-gray-300">Loading...</p>
       </div>
-    );
+    </div>
+  );
+
+  if (loading) {
+    return <LoadingSpinner />;
   }
 
   if (error || !isAuthenticated) {
@@ -48,6 +60,9 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Loading bar for navigation */}
+      <TeacherLoadingBar />
+      
       <div className="flex">
         {/* Sidebar */}
         <TeacherSidebar 
@@ -77,8 +92,20 @@ export default function TeacherLayout({ children }: TeacherLayoutProps) {
           </div>
 
           {/* Page Content */}
-          <main className="p-6">
-            {children}
+          <main className="p-6 relative">
+            {/* Navigation loading overlay */}
+            {isNavigating && (
+              <div className="absolute inset-0 bg-white/50 dark:bg-gray-900/50 z-10 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-6 h-6 border-t-2 border-blue-600 rounded-full animate-spin mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-600 dark:text-gray-300">Loading...</p>
+                </div>
+              </div>
+            )}
+            
+            <Suspense fallback={<LoadingSpinner />}>
+              {children}
+            </Suspense>
           </main>
         </div>
       </div>

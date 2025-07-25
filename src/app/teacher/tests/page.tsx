@@ -15,7 +15,9 @@ import {
   Trash2,
   AlertCircle,
   ArrowLeft,
-  BookOpen
+  BookOpen,
+  GraduationCap,
+  CheckSquare
 } from 'lucide-react';
 import TeacherLayout from '@/components/teacher/TeacherLayout';
 import CreateTestModal from '@/components/modals/CreateTestModal';
@@ -203,6 +205,19 @@ export default function TeacherTests() {
         name: classWithSubject?.subject || subjectId
       };
     });
+  };
+
+  // Check if test has essay questions
+  const hasEssayQuestions = (test: Test) => {
+    return test.questions.some(question => 
+      question.type === 'essay' || question.questionType === 'essay'
+    );
+  };
+
+  // Navigate to marking page
+  const handleMarkSubmissions = (testId: string) => {
+    // Navigate to the marking page
+    window.location.href = `/teacher/tests/${testId}/mark`;
   };
 
   const formatDateTime = (timestamp: any) => {
@@ -698,6 +713,18 @@ export default function TeacherTests() {
                                     >
                                       <Eye className="h-4 w-4" />
                                     </button>
+                                    
+                                    {/* Show marking button for essay tests */}
+                                    {hasEssayQuestions(test) && (
+                                      <button
+                                        onClick={() => handleMarkSubmissions(test.id)}
+                                        className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                                        title="Mark Submissions"
+                                      >
+                                        <GraduationCap className="h-4 w-4" />
+                                      </button>
+                                    )}
+                                    
                                     <button
                                       className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors"
                                       title="View Analytics"

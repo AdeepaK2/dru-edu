@@ -47,25 +47,38 @@ export class StudentFirestoreService {
   }
 
   /**
-   * Get students by class ID
+   * Get students by class ID using enrollment system
    */
   static async getStudentsByClass(classId: string): Promise<StudentListItem[]> {
+    console.log(`🔍 Querying students for class: ${classId}`);
+    
     try {
-      const q = query(
-        this.collectionRef,
-        where('classIds', 'array-contains', classId),
-        orderBy('name', 'asc')
-      );
-      const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        name: doc.data().name,
-        email: doc.data().email,
-        status: doc.data().status,
-      }));
+      // Use the enrollment system to get students for the class
+      const { getEnrollmentsByClass } = await import('@/services/studentEnrollmentService');
+      console.log(`📊 Getting enrollments for class: ${classId}`);
+      
+      const enrollments = await getEnrollmentsByClass(classId);
+      console.log(`✅ Found ${enrollments.length} enrollments`);
+      
+      // Convert enrollments to student list items
+      const students = enrollments
+        .filter(enrollment => enrollment.status === 'Active') // Only active enrollments
+        .map(enrollment => ({
+          id: enrollment.studentId,
+          name: enrollment.studentName,
+          email: enrollment.studentEmail,
+          status: 'Active' as const, // Set status based on enrollment
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)); // Sort by name
+      
+      console.log(`📋 Active students:`, students);
+      return students;
     } catch (error) {
-      console.error(`Error fetching students for class ${classId}:`, error);
-      throw new Error(`Failed to fetch students for class: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error(`❌ Error fetching students for class ${classId}:`, error);
+      
+      // Fallback: Return empty array instead of throwing
+      console.warn(`🔄 Returning empty student list for class ${classId}`);
+      return [];
     }
   }
 

@@ -1,5 +1,3 @@
-'use client';
-
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -23,6 +21,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '@/utils/firebase-client';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
+import { useTeacherNavigation } from '@/hooks/useTeacherNavigation';
 
 interface SidebarItem {
   id: string;
@@ -96,6 +95,7 @@ interface TeacherSidebarProps {
 export default function TeacherSidebar({ teacher, isOpen, onToggle }: TeacherSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { navigateWithLoading, preloadRoute } = useTeacherNavigation();
 
   const handleLogout = async () => {
     try {
@@ -103,6 +103,19 @@ export default function TeacherSidebar({ teacher, isOpen, onToggle }: TeacherSid
       router.push('/teacher/login');
     } catch (error) {
       console.error('Logout error:', error);
+    }
+  };
+
+  // Optimized navigation handler
+  const handleNavigation = (href: string) => {
+    // Close mobile sidebar
+    if (window.innerWidth < 1024) {
+      onToggle();
+    }
+    
+    // Use optimized navigation
+    if (pathname !== href) {
+      navigateWithLoading(href);
     }
   };
 
@@ -176,22 +189,17 @@ export default function TeacherSidebar({ teacher, isOpen, onToggle }: TeacherSid
             const isActive = pathname === item.href;
             
             return (
-              <Link
+              <div
                 key={item.id}
-                href={item.href}
                 className={`
-                  flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors
+                  flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer
                   ${isActive 
                     ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300' 
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
-                onClick={() => {
-                  // Close mobile sidebar when navigating
-                  if (window.innerWidth < 1024) {
-                    onToggle();
-                  }
-                }}
+                onClick={() => handleNavigation(item.href)}
+                onMouseEnter={() => preloadRoute(item.href)}
               >
                 <div className="flex items-center space-x-3">
                   <Icon className="w-5 h-5" />
@@ -205,7 +213,7 @@ export default function TeacherSidebar({ teacher, isOpen, onToggle }: TeacherSid
                 {isActive && (
                   <ChevronRight className="w-4 h-4" />
                 )}
-              </Link>
+              </div>
             );
           })}
         </nav>
