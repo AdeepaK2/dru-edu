@@ -6,7 +6,7 @@ import { useStudentAuth } from '@/hooks/useStudentAuth';
 import { 
   AlertCircle, ArrowLeft, CheckCircle, XCircle, 
   Clock, Award, BarChart, ChevronDown, ChevronUp, 
-  FileText, Info, AlertTriangle, RefreshCw, Target
+  FileText, Info, AlertTriangle, RefreshCw, Target, Download
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { StudentSubmission, FinalAnswer, MCQResult, EssayResult } from '@/models/studentSubmissionSchema';
@@ -176,10 +176,21 @@ export default function TestResultPage() {
               };
               
               // Compute results using the new service
-              submissionData = await SimplifiedResultService.convertToLegacySubmission(
+              const convertedSubmission = await SimplifiedResultService.convertToLegacySubmission(
                 simplifiedSubmission,
                 questionIds
               );
+              
+              // Only use converted data if original has no essay results, otherwise preserve original essay data
+              if (submissionData.essayResults && submissionData.essayResults.length > 0) {
+                submissionData = {
+                  ...convertedSubmission,
+                  essayResults: submissionData.essayResults,
+                  finalAnswers: submissionData.finalAnswers // Preserve original final answers with essay marks
+                };
+              } else {
+                submissionData = convertedSubmission;
+              }
               
               console.log('✅ Results computed successfully');
             }
@@ -192,6 +203,21 @@ export default function TestResultPage() {
         // Set data
         setSubmission(submissionData);
         setTest(testData);
+        
+        // Debug logging to see what we're getting
+        console.log('🔍 SUBMISSION DATA LOADED:', {
+          submissionId: submissionData.id,
+          totalScore: submissionData.totalScore,
+          autoGradedScore: submissionData.autoGradedScore,
+          essayResults: submissionData.essayResults,
+          essayResultsCount: submissionData.essayResults?.length || 0,
+          manualGradingPending: submissionData.manualGradingPending,
+          finalAnswers: submissionData.finalAnswers?.map(fa => ({
+            questionId: fa.questionId,
+            questionType: fa.questionType,
+            textContent: fa.textContent?.substring(0, 50) + '...'
+          }))
+        });
         
         // Debug logging to see what we're getting
         console.log('🔍 TEST RESULTS DEBUG:', {
@@ -498,13 +524,23 @@ export default function TestResultPage() {
       <div className="space-y-6">
         {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <button 
-            onClick={handleBack}
-            className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to Tests
-          </button>
+          <div className="flex items-center justify-between mb-4">
+            <button 
+              onClick={handleBack}
+              className="flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back to Tests
+            </button>
+            
+            <button 
+              onClick={() => window.location.reload()}
+              className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 text-sm"
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Refresh Results
+            </button>
+          </div>
           
           <div className="flex flex-col md:flex-row md:justify-between md:items-start">
             <div>
@@ -845,12 +881,24 @@ export default function TestResultPage() {
                               {answer.questionType === 'mcq' ? 'Multiple Choice' : 'Essay'}
                             </span>
                             <span>
-                              {answer.questionType === 'mcq' 
-                                ? `${mcqResult?.marksAwarded || 0}/${mcqResult?.maxMarks || answer.questionMarks} marks`
-                                : essayResult && essayResult.marksAwarded !== undefined
-                                  ? `${essayResult.marksAwarded}/${essayResult.maxMarks} marks`
-                                  : `${answer.questionMarks} marks (pending)`
-                              }
+                              {(() => {
+                                if (answer.questionType === 'mcq') {
+                                  return `${mcqResult?.marksAwarded || 0}/${mcqResult?.maxMarks || answer.questionMarks} marks`;
+                                } else {
+                                  // Essay question
+                                  if (essayResult && essayResult.marksAwarded !== undefined && essayResult.marksAwarded !== null) {
+                                    const marks = Number(essayResult.marksAwarded);
+                                    const maxMarks = Number(essayResult.maxMarks);
+                                    return `${marks}/${maxMarks} marks`;
+                                  } else if (answer.marksAwarded !== undefined && answer.marksAwarded !== null) {
+                                    const marks = Number(answer.marksAwarded);
+                                    const maxMarks = Number(answer.questionMarks);
+                                    return `${marks}/${maxMarks} marks`;
+                                  } else {
+                                    return `${answer.questionMarks} marks (pending)`;
+                                  }
+                                }
+                              })()}
                             </span>
                             <span>•</span>
                             <span>{formatDuration(answer.timeSpent)} spent</span>
@@ -881,11 +929,19 @@ export default function TestResultPage() {
                       
                       {answer.questionType === 'essay' && (
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-                          essayResult 
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-                            : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
+                          (() => {
+                            const isGraded = (essayResult && essayResult.marksAwarded !== undefined && essayResult.marksAwarded !== null) ||
+                                           (answer.marksAwarded !== undefined && answer.marksAwarded !== null);
+                            return isGraded 
+                              ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
+                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+                          })()
                         }`}>
-                          {essayResult ? 'Graded' : 'Pending Review'}
+                          {(() => {
+                            const isGraded = (essayResult && essayResult.marksAwarded !== undefined && essayResult.marksAwarded !== null) ||
+                                           (answer.marksAwarded !== undefined && answer.marksAwarded !== null);
+                            return isGraded ? 'Graded' : 'Pending Review';
+                          })()}
                         </span>
                       )}
                     </div>
@@ -970,22 +1026,74 @@ export default function TestResultPage() {
                           <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                             Your Answer:
                           </div>
-                          <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-600">
-                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                              {answer.textContent || '(No answer provided)'}
-                            </p>
-                          </div>
+                          
+                          {/* Text Answer */}
+                          {answer.textContent && answer.textContent.trim() && (
+                            <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-600 mb-3">
+                              <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                                {answer.textContent}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {/* PDF Files */}
+                          {answer.pdfFiles && answer.pdfFiles.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                                PDF Attachments:
+                              </div>
+                              {answer.pdfFiles.map((pdf, pdfIndex) => (
+                                <div
+                                  key={`${pdf.fileUrl}-${pdfIndex}`}
+                                  className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-900/20 dark:border-blue-800"
+                                >
+                                  <div className="flex items-center space-x-3">
+                                    <div className="flex-shrink-0">
+                                      <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                      </svg>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                        {pdf.fileName}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        Size: {(pdf.fileSize / 1024 / 1024).toFixed(2)} MB
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <button
+                                    onClick={() => window.open(pdf.fileUrl, '_blank')}
+                                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:bg-blue-900 dark:text-blue-300 dark:hover:bg-blue-800"
+                                  >
+                                    <Download className="w-4 h-4 mr-1" />
+                                    Download
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {/* No Answer Message */}
+                          {(!answer.textContent || !answer.textContent.trim()) && (!answer.pdfFiles || answer.pdfFiles.length === 0) && (
+                            <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-600">
+                              <p className="text-gray-500 dark:text-gray-400 italic">
+                                (No answer provided)
+                              </p>
+                            </div>
+                          )}
                         </div>
 
+                        {/* DEBUG PANEL - Remove in production */}
                         {/* Grading Results */}
                         {essayResult ? (
                           <div className="space-y-3">
                             <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg dark:bg-blue-900/20">
                               <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
-                                Score: {essayResult.marksAwarded || 0} / {essayResult.maxMarks} marks
+                                Score: {Number(essayResult.marksAwarded) || 0} / {Number(essayResult.maxMarks)} marks
                               </span>
                               <span className="text-xs text-blue-600 dark:text-blue-400">
-                                {Math.round(((essayResult.marksAwarded || 0) / essayResult.maxMarks) * 100)}%
+                                {Math.round(((Number(essayResult.marksAwarded) || 0) / Number(essayResult.maxMarks)) * 100)}%
                               </span>
                             </div>
 

@@ -39,57 +39,59 @@ const nextConfig: NextConfig = {
           as: '*.js',
         },
       },
+      // Note: Turbopack handles module resolution differently
+      // Most webpack fallbacks are not needed with Turbopack
     },
+    // Turbopack-compatible optimizations
+    optimizeCss: true,
+    webVitalsAttribution: ['CLS', 'LCP'],
   },
-  // Custom webpack configuration
-  webpack: (config, { dev, isServer }) => {
-    // Optimize for teacher dashboard
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
+  // Conditional webpack configuration (only used when Turbopack is disabled)
+  ...(process.env.NODE_ENV === 'production' && {
+    webpack: (config, { dev, isServer }) => {
+      // Optimize for teacher dashboard
+      if (!isServer) {
+        config.resolve.fallback = {
+          ...config.resolve.fallback,
+          fs: false,
+          net: false,
+          tls: false,
+        };
+      }
+
+      // Split chunks for better caching in production
+      config.optimization.splitChunks = {
+        chunks: 'all',
+        cacheGroups: {
+          default: {
+            minChunks: 2,
+            priority: -20,
+            reuseExistingChunk: true,
+          },
+          vendor: {
+            test: /[\\/]node_modules[\\/]/,
+            name: 'vendors',
+            priority: -10,
+            chunks: 'all',
+          },
+          teacher: {
+            test: /[\\/]src[\\/](app[\\/]teacher|components[\\/]teacher)[\\/]/,
+            name: 'teacher',
+            priority: 10,
+            chunks: 'all',
+          },
+          ui: {
+            test: /[\\/]src[\\/]components[\\/]ui[\\/]/,
+            name: 'ui',
+            priority: 20,
+            chunks: 'all',
+          },
+        },
       };
-    }
-
-    // Split chunks for better caching
-    config.optimization.splitChunks = {
-      chunks: 'all',
-      cacheGroups: {
-        default: {
-          minChunks: 2,
-          priority: -20,
-          reuseExistingChunk: true,
-        },
-        vendor: {
-          test: /[\\/]node_modules[\\/]/,
-          name: 'vendors',
-          priority: -10,
-          chunks: 'all',
-        },
-        teacher: {
-          test: /[\\/]src[\\/](app[\\/]teacher|components[\\/]teacher)[\\/]/,
-          name: 'teacher',
-          priority: 10,
-          chunks: 'all',
-        },
-        ui: {
-          test: /[\\/]src[\\/]components[\\/]ui[\\/]/,
-          name: 'ui',
-          priority: 20,
-          chunks: 'all',
-        },
-      },
-    };
-
-    // Completely disable minification to avoid the plugin error in development
-    if (dev) {
-      config.optimization.minimize = false;
-    }
-    
-    return config;
-  },
+      
+      return config;
+    },
+  }),
 };
 
 export default nextConfig;

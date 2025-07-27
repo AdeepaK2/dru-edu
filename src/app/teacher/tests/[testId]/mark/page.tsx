@@ -49,6 +49,12 @@ interface SubmissionWithStudent {
     points: number;
     maxPoints: number;
   }>;
+  essayResults?: Array<{
+    questionId: string;
+    marksAwarded?: number;
+    maxMarks: number;
+    feedback?: string;
+  }>;
   finalAnswers?: any[];
   answers?: any;
 }
@@ -115,6 +121,7 @@ export default function MarkSubmissions() {
             studentName: submission.studentName || 'Unknown Student',
             studentEmail: submission.studentEmail || 'unknown@email.com',
             submittedAt: submissionDate,
+            essayResults: submission.essayResults || [], // Include existing essay results
             essayAnswers: essayQuestions.map(question => {
               // Try to get answer from finalAnswers first, then from answers
               let answer = submission.finalAnswers?.find((a: any) => a.questionId === question.id);
@@ -143,16 +150,25 @@ export default function MarkSubmissions() {
         
         setSubmissions(processedSubmissions);
         
-        // Initialize grades state
+        // Initialize grades state - load existing grades from essay results
         const initialGrades: Record<string, EssayGrade[]> = {};
         processedSubmissions.forEach(submission => {
-          initialGrades[submission.id] = submission.essayAnswers.map(answer => ({
-            questionId: answer.questionId,
-            score: answer.points,
-            maxScore: answer.maxPoints,
-            feedback: ''
-          }));
+          initialGrades[submission.id] = submission.essayAnswers.map(answer => {
+            // Check if there's an existing essay result for this question
+            const existingEssayResult = submission.essayResults?.find(
+              (result: any) => result.questionId === answer.questionId
+            );
+            
+            return {
+              questionId: answer.questionId,
+              score: existingEssayResult?.marksAwarded || 0,
+              maxScore: answer.maxPoints,
+              feedback: existingEssayResult?.feedback || ''
+            };
+          });
         });
+        
+        console.log('📊 Initialized grades with existing data:', initialGrades);
         setGrades(initialGrades);
         
       } catch (err: any) {
@@ -168,11 +184,14 @@ export default function MarkSubmissions() {
 
   // Update grade for a specific question
   const updateGrade = (submissionId: string, questionId: string, score: number, feedback: string) => {
+    // Ensure score is a valid number
+    const validScore = typeof score === 'number' ? score : Number(score) || 0;
+    
     setGrades(prev => ({
       ...prev,
       [submissionId]: prev[submissionId]?.map(grade => 
         grade.questionId === questionId 
-          ? { ...grade, score, feedback }
+          ? { ...grade, score: validScore, feedback }
           : grade
       ) || []
     }));
@@ -183,7 +202,18 @@ export default function MarkSubmissions() {
     setSavingGrades(true);
     try {
       const submissionGrades = grades[submissionId] || [];
-      await SubmissionService.updateEssayGrades(submissionId, submissionGrades);
+      
+      // Validate and clean the grades data
+      const validatedGrades = submissionGrades.map(grade => ({
+        questionId: grade.questionId,
+        score: typeof grade.score === 'number' ? grade.score : Number(grade.score) || 0,
+        maxScore: typeof grade.maxScore === 'number' ? grade.maxScore : Number(grade.maxScore) || 0,
+        feedback: grade.feedback || ''
+      }));
+      
+      await SubmissionService.updateEssayGrades(submissionId, validatedGrades);
+      
+      console.log('✅ Grades saved successfully');
       
       // Update local submission data
       setSubmissions(prev => prev.map(sub => 
@@ -212,8 +242,12 @@ export default function MarkSubmissions() {
     window.open(fileUrl, '_blank');
   };
 
-  // Get total score for a submission
+  // Get total score for a submission (including saved grades)
   const getTotalScore = (submissionId: string) => {
+    const submission = submissions.find(s => s.id === submissionId);
+    if (!submission) return 0;
+    
+    // Use grades from state (which now includes loaded essay results)
     const submissionGrades = grades[submissionId] || [];
     return submissionGrades.reduce((total, grade) => total + grade.score, 0);
   };

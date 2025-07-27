@@ -43,16 +43,79 @@ export default function TeacherLessons() {
   // Load subjects for teacher
   useEffect(() => {
     const loadSubjects = async () => {
-      if (!teacher?.subjects) return;
+      console.log('🔍 Loading subjects for teacher:', {
+        teacher: teacher ? {
+          id: teacher.id,
+          name: teacher.name,
+          subjects: teacher.subjects
+        } : null
+      });
+      
+      if (!teacher) {
+        console.log('❌ No teacher found, skipping subject load');
+        return;
+      }
+      
+      if (!teacher.subjects || teacher.subjects.length === 0) {
+        console.log('❌ Teacher has no subjects assigned:', teacher.subjects);
+        setSubjects([]);
+        setLoading(false);
+        return;
+      }
       
       setLoading(true);
       setError(null);
       
       try {
+        console.log('📚 Fetching all subjects from Firestore...');
         // Get all subjects and filter for teacher's subjects
         const allSubjects = await SubjectFirestoreService.getAllSubjects();
+        console.log('📋 All subjects from Firestore:', allSubjects.length);
+        console.log('📋 All subjects detailed:', allSubjects.map(s => ({
+          id: s.id,
+          name: s.name,
+          subjectId: s.subjectId,
+          grade: s.grade,
+          combined: `${s.name}-Grade ${s.grade}`
+        })));
+        console.log('🎯 Teacher assigned subjects:', teacher.subjects);
+        console.log('🎯 Teacher subjects type:', typeof teacher.subjects, Array.isArray(teacher.subjects));
+        
         const teacherSubjects = allSubjects
-          .filter(subject => teacher.subjects?.includes(subject.name))
+          .filter(subject => {
+            // Try multiple matching strategies
+            const matchByName = teacher.subjects?.includes(subject.name);
+            const matchBySubjectId = teacher.subjects?.includes(subject.subjectId);
+            const matchByFirestoreId = teacher.subjects?.includes(subject.id);
+            
+            // Try combined name-grade format
+            const combinedNameGrade = `${subject.name}-Grade ${subject.grade}`;
+            const matchByCombined = teacher.subjects?.includes(combinedNameGrade);
+            
+            // Try partial matching (if teacher subject contains the subject name)
+            const matchByPartialName = teacher.subjects?.some(teacherSubj => 
+              teacherSubj.toLowerCase().includes(subject.name.toLowerCase()) ||
+              subject.name.toLowerCase().includes(teacherSubj.toLowerCase())
+            );
+            
+            const isMatch = matchByName || matchBySubjectId || matchByFirestoreId || matchByCombined || matchByPartialName;
+            
+            console.log(`🔍 Checking subject:`, {
+              name: subject.name,
+              subjectId: subject.subjectId,
+              firestoreId: subject.id,
+              grade: subject.grade,
+              combinedNameGrade,
+              teacherSubjects: teacher.subjects,
+              matchByName,
+              matchBySubjectId,
+              matchByFirestoreId,
+              matchByCombined,
+              matchByPartialName,
+              finalResult: isMatch ? 'MATCH ✅' : 'NO MATCH ❌'
+            });
+            return isMatch;
+          })
           .map(subject => ({
             id: subject.id,
             name: subject.name,
@@ -61,9 +124,10 @@ export default function TeacherLessons() {
             isActive: subject.isActive
           }));
         
+        console.log('✅ Filtered teacher subjects:', teacherSubjects.length, teacherSubjects.map(s => s.name));
         setSubjects(teacherSubjects);
       } catch (err: any) {
-        console.error("Error loading subjects:", err);
+        console.error("❌ Error loading subjects:", err);
         setError(err.message || 'Failed to load subjects');
       } finally {
         setLoading(false);
@@ -71,7 +135,7 @@ export default function TeacherLessons() {
     };
     
     loadSubjects();
-  }, [teacher?.subjects]);
+  }, [teacher]);
 
   // Filter subjects based on search
   const filteredSubjects = subjects.filter(subject =>

@@ -51,7 +51,11 @@ export interface Teacher {
   address?: string;
   avatar: string;
   profileImageUrl?: string;
-  classesAssigned: number;
+  /**
+   * @deprecated Use dynamic queries with ClassFirestoreService.getClassesByTeacher() instead
+   * This field is no longer maintained and may be inaccurate
+   */
+  classesAssigned?: number;
   studentsCount: number;
 }
 
@@ -71,7 +75,11 @@ export interface TeacherDocument {
   address?: string;
   avatar: string;
   profileImageUrl?: string;
-  classesAssigned: number;
+  /**
+   * @deprecated Use dynamic queries with ClassFirestoreService.getClassesByTeacher() instead
+   * This field is no longer maintained and may be inaccurate
+   */
+  classesAssigned?: number;
   studentsCount: number;
   uid: string; // Firebase Auth UID
   createdAt: Timestamp;
@@ -95,7 +103,7 @@ export const saveTeacher = async (teacher: Partial<Teacher>): Promise<Teacher> =
       hireDate: teacher.hireDate || new Date().toISOString().split('T')[0],
       avatar: teacher.avatar || 'TC',
       status: teacher.status || 'Active',
-      classesAssigned: teacher.classesAssigned || 0,
+      classesAssigned: teacher.classesAssigned, // Keep existing value if present, undefined if not
       studentsCount: teacher.studentsCount || 0,
     } as Teacher;
   } catch (error) {

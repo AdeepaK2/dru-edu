@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
       address: teacherData.address || '',
       avatar: initials,
       profileImageUrl: teacherData.profileImageUrl || '',
-      classesAssigned: 0,
+      // Removed classesAssigned - use dynamic queries instead
       studentsCount: 0,
       uid: userRecord.uid,
       createdAt: FieldValue.serverTimestamp() as any,

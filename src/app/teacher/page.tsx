@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   Users, 
   BookOpen, 
@@ -18,11 +18,43 @@ import { useTeacherAuth } from '@/hooks/useTeacherAuth';
 import TeacherLayout from '@/components/teacher/TeacherLayout';
 import Link from 'next/link';
 import { useTeacherNavigation } from '@/hooks/useTeacherNavigation';
+import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
+import { getTeacherClassCount } from '@/utils/teacher-class-utils';
 
 export default function TeacherDashboard() {
-  const { teacher } = useTeacherAuth();
+  const { teacher, loading, error, isAuthenticated, isTeacher, user } = useTeacherAuth();
   const { preloadRoute } = useTeacherNavigation();
 
+  // State for dynamic data
+  const [actualClassesCount, setActualClassesCount] = useState<number>(0);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  // Load actual classes count when teacher is available
+  useEffect(() => {
+    const loadActualStats = async () => {
+      if (!teacher?.id) return;
+      
+      try {
+        setLoadingStats(true);
+        console.log('🔍 Loading actual classes for teacher:', teacher.id);
+        
+        // Use utility function for consistency
+        const classCount = await getTeacherClassCount(teacher.id);
+        console.log('📊 Found classes:', classCount);
+        setActualClassesCount(classCount);
+      } catch (error) {
+        console.error('❌ Error loading teacher classes:', error);
+        // Fallback to deprecated field if available, otherwise 0
+        setActualClassesCount(teacher.classesAssigned || 0);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+
+    loadActualStats();
+  }, [teacher?.id, teacher?.classesAssigned]);
+
+  // ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
   // Get current date and time in Melbourne timezone - memoized for performance
   const melbourneDateTime = useMemo(() => {
     return new Intl.DateTimeFormat('en-AU', {
@@ -38,12 +70,12 @@ export default function TeacherDashboard() {
 
   // Memoized dashboard stats to prevent unnecessary recalculations
   const dashboardStats = useMemo(() => ({
-    totalClasses: teacher?.classesAssigned || 3,
+    totalClasses: actualClassesCount, // Use actual count instead of profile field
     totalStudents: teacher?.studentsCount || 45,
     pendingTests: 2,
     videosUploaded: 12,
     avgGrade: 85.4
-  }), [teacher]);
+  }), [actualClassesCount, teacher]);
 
   // Memoized activities data
   const recentActivities = useMemo(() => [
@@ -89,6 +121,95 @@ export default function TeacherDashboard() {
     }
   ], []);
 
+  // Debug logging
+  React.useEffect(() => {
+    console.log('🔍 Teacher Dashboard Debug:', {
+      loading,
+      error,
+      isAuthenticated,
+      isTeacher,
+      teacher: teacher ? { 
+        id: teacher.id, 
+        name: teacher.name, 
+        email: teacher.email,
+        subjects: teacher.subjects,
+        deprecatedClassesAssigned: teacher.classesAssigned, // This field is deprecated
+        actualClassesCount,
+        studentsCount: teacher.studentsCount
+      } : null,
+      user: user ? { uid: user.uid, email: user.email } : null,
+      loadingStats
+    });
+  }, [loading, error, isAuthenticated, isTeacher, teacher, user, actualClassesCount, loadingStats]);
+
+  // NOW WE CAN SAFELY USE CONDITIONAL RETURNS
+  // Show loading state
+  if (loading) {
+    return (
+      <TeacherLayout>
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600 dark:text-gray-400">Loading teacher dashboard...</p>
+          </div>
+        </div>
+      </TeacherLayout>
+    );
+  }
+
+  // Show error state
+  if (error || !isAuthenticated || !isTeacher) {
+    return (
+      <TeacherLayout>
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center max-w-md">
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Users className="w-8 h-8 text-red-600 dark:text-red-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Authentication Required
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              {error || 'Please log in with a valid teacher account to access the dashboard.'}
+            </p>
+            <div className="bg-gray-100 dark:bg-gray-700 p-3 rounded-md mb-4 text-left text-sm">
+              <strong>Debug Info:</strong>
+              <div>Loading: {loading ? 'Yes' : 'No'}</div>
+              <div>Authenticated: {isAuthenticated ? 'Yes' : 'No'}</div>
+              <div>Is Teacher: {isTeacher ? 'Yes' : 'No'}</div>
+              <div>Error: {error || 'None'}</div>
+              <div>User Email: {user?.email || 'None'}</div>
+            </div>
+            <Button onClick={() => window.location.href = '/auth/teacher/login'}>
+              Go to Teacher Login
+            </Button>
+          </div>
+        </div>
+      </TeacherLayout>
+    );
+  }
+
+  // If no teacher data but authenticated, show fallback
+  if (!teacher) {
+    return (
+      <TeacherLayout>
+        <div className="flex items-center justify-center min-h-96">
+          <div className="text-center max-w-md">
+            <div className="w-16 h-16 bg-yellow-100 dark:bg-yellow-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FileText className="w-8 h-8 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+              Profile Setup Required
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-4">
+              Your teacher profile needs to be completed. Please contact the administrator.
+            </p>
+          </div>
+        </div>
+      </TeacherLayout>
+    );
+  }
+
   return (
     <TeacherLayout>
       <div className="space-y-6">
@@ -124,9 +245,18 @@ export default function TeacherDashboard() {
               </div>
               <div className="ml-4">
                 <p className="text-sm text-gray-600 dark:text-gray-400">Classes</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {dashboardStats.totalClasses}
-                </p>
+                <div className="flex items-center">
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {loadingStats ? (
+                      <span className="inline-block w-8 h-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse"></span>
+                    ) : (
+                      dashboardStats.totalClasses
+                    )}
+                  </p>
+                  {loadingStats && (
+                    <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">Loading...</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>

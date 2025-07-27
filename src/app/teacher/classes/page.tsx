@@ -310,7 +310,7 @@ export default function TeacherClasses() {
                 <div className="flex space-x-3">
                   <Link
                     href={`/teacher/classes/${cls.id}`}
-                    className="flex-1"
+                    className="w-full"
                   >
                     <Button 
                       className="w-full flex items-center justify-center space-x-2"
@@ -318,19 +318,6 @@ export default function TeacherClasses() {
                     >
                       <Eye className="w-4 h-4" />
                       <span>View Details</span>
-                    </Button>
-                  </Link>
-                  <Link
-                    href={`/teacher/classes/${cls.id}/students`}
-                    className="flex-1"
-                  >
-                    <Button 
-                      variant="outline" 
-                      className="w-full flex items-center justify-center space-x-2"
-                      size="sm"
-                    >
-                      <Users className="w-4 h-4" />
-                      <span>Students</span>
                     </Button>
                   </Link>
                 </div>

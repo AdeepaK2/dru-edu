@@ -9,6 +9,8 @@ import { Button, ConfirmDialog, Input } from '@/components/ui';
 import { useToast } from '@/components/ui';
 import TeacherModal from '@/components/modals/TeacherModal';
 import { useCachedData } from '@/hooks/useAdminCache';
+import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
+import { getMultipleTeacherClassCounts } from '@/utils/teacher-class-utils';
 
 export default function TeacherManagement() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,6 +21,7 @@ export default function TeacherManagement() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [teacherToDelete, setTeacherToDelete] = useState<TeacherDocument | null>(null);
   const [localTeachers, setLocalTeachers] = useState<TeacherDocument[]>([]);
+  const [actualClassCounts, setActualClassCounts] = useState<Record<string, number>>({});
 
   // Use toast for user feedback
   const { showToast } = useToast();
@@ -67,9 +70,62 @@ export default function TeacherManagement() {
       if (now - lastSyncTimestamp > 1000) { // Wait 1 second after last user action
         console.log('Syncing cached data with local state');
         setLocalTeachers(teachers);
+        
+        // Load actual class counts for all teachers
+        loadActualClassCounts(teachers);
       }
     }
   }, [teachers, lastSyncTimestamp]);
+
+  // Load actual class counts for all teachers
+  const loadActualClassCounts = async (teachersList: TeacherDocument[]) => {
+    try {
+      console.log('🔍 Loading actual class counts for', teachersList.length, 'teachers');
+      
+      // Use utility function for better performance
+      const teacherIds = teachersList.map(t => t.id);
+      const counts = await getMultipleTeacherClassCounts(teacherIds);
+      
+      setActualClassCounts(counts);
+      console.log('✅ Loaded actual class counts:', counts);
+    } catch (error) {
+      console.error('❌ Error loading class counts:', error);
+    }
+  };
+
+  // Debug function to test class loading
+  const debugClassData = async () => {
+    try {
+      console.log('🔍 DEBUG: Testing class data loading...');
+      
+      // Get all classes
+      const allClasses = await ClassFirestoreService.getAllClasses();
+      console.log('📋 All classes in database:', allClasses.length);
+      
+      allClasses.forEach((cls, index) => {
+        console.log(`📝 Class ${index + 1}:`, {
+          id: cls.id,
+          name: cls.name,
+          teacherId: cls.teacherId || 'NO TEACHER',
+          status: cls.status
+        });
+      });
+      
+      // Test specific teacher
+      if (localTeachers.length > 0) {
+        const firstTeacher = localTeachers[0];
+        console.log('🧪 Testing with first teacher:', firstTeacher.id, firstTeacher.name);
+        
+        const teacherClasses = await ClassFirestoreService.getClassesByTeacher(firstTeacher.id);
+        console.log('📊 Classes for this teacher:', teacherClasses.length);
+      }
+      
+      showToast('Debug info logged to console', 'info');
+    } catch (error) {
+      console.error('❌ Debug error:', error);
+      showToast('Debug failed - check console', 'error');
+    }
+  };
 
   // Use local teachers for display
   const displayTeachers = localTeachers;
@@ -90,7 +146,7 @@ export default function TeacherManagement() {
         body: JSON.stringify({
           ...teacherData,
           avatar: '',
-          classesAssigned: 0,
+          // Removed classesAssigned - will use dynamic queries instead
           studentsCount: 0,
         }),
       });
@@ -232,6 +288,7 @@ export default function TeacherManagement() {
     });
   }, [displayTeachers, searchTerm]);
 
+
   // Handle edit button click
   const handleEditClick = (teacher: TeacherDocument) => {
     setEditingTeacher(teacher);
@@ -269,6 +326,14 @@ export default function TeacherManagement() {
             </p>
           </div>
           <div className="flex items-center space-x-4">
+            <Button
+              onClick={debugClassData}
+              variant="outline"
+              size="sm"
+              className="text-purple-600 border-purple-300 hover:bg-purple-50"
+            >
+              Debug Classes
+            </Button>
             <div className="flex items-center bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-lg">
               <GraduationCap className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
               <span className="text-blue-600 dark:text-blue-400 font-medium">
@@ -379,7 +444,10 @@ export default function TeacherManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
-                      {teacher.classesAssigned || 0} classes
+                      {actualClassCounts[teacher.id] !== undefined 
+                        ? `${actualClassCounts[teacher.id]} classes`
+                        : 'Loading classes...'
+                      }
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

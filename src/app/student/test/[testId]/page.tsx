@@ -65,9 +65,129 @@ export default function TestPage() {
           return;
         }
 
-        // Get attempt information
-        const { AttemptManagementService } = await import('@/apiservices/attemptManagementService');
-        const attemptData = await AttemptManagementService.getAttemptSummary(testId, student.id);
+        // Get attempt information - Use direct query to get all attempts and categorize them properly
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        
+        const attemptsQuery = query(
+          collection(firestore, 'testAttempts'),
+          where('testId', '==', testId),
+          where('studentId', '==', student.id)
+        );
+        
+        const attemptsSnapshot = await getDocs(attemptsQuery);
+        const allAttempts: any[] = [];
+        const completedAttempts: any[] = [];
+        const activeAttempts: any[] = [];
+        
+        const now = new Date();
+        
+        attemptsSnapshot.forEach((doc) => {
+          const attemptData = { id: doc.id, ...doc.data() } as any;
+          allAttempts.push(attemptData);
+          
+          // Check if attempt has expired by comparing current time with endTime
+          let isExpired = false;
+          if (attemptData.endTime) {
+            const endTime = attemptData.endTime.toDate ? attemptData.endTime.toDate() : new Date(attemptData.endTime.seconds * 1000);
+            isExpired = now > endTime;
+          } else if (attemptData.startedAt && attemptData.totalTimeAllowed) {
+            // Fallback: calculate end time from start time + duration
+            const startTime = attemptData.startedAt.toDate ? attemptData.startedAt.toDate() : new Date(attemptData.startedAt.seconds * 1000);
+            const endTime = new Date(startTime.getTime() + (attemptData.totalTimeAllowed * 1000));
+            isExpired = now > endTime;
+          }
+          
+          // Categorize attempts based on status and time validity
+          const isCompleted = attemptData.status === 'submitted' || 
+                             attemptData.status === 'auto_submitted' || 
+                             attemptData.submittedAt ||
+                             isExpired; // Expired attempts are considered completed
+          
+          const isActive = !isCompleted && (
+            attemptData.status === 'in_progress' || 
+            attemptData.status === 'not_started' || 
+            attemptData.status === 'paused' ||
+            (!attemptData.submittedAt && !attemptData.status)
+          );
+          
+          if (isCompleted) {
+            completedAttempts.push(attemptData);
+          } else if (isActive) {
+            activeAttempts.push(attemptData);
+          }
+        });
+        
+        // Calculate proper attempt summary
+        const attemptsAllowed = testData.type === 'flexible' 
+          ? (testData as FlexibleTest).attemptsAllowed || 1 
+          : 1;
+        
+        const canCreateNewAttempt = completedAttempts.length < attemptsAllowed || activeAttempts.length > 0;
+        
+        // Find best score from completed attempts
+        let bestScore: number | undefined;
+        let lastAttemptStatus: any;
+        let lastAttemptDate: any;
+        
+        if (completedAttempts.length > 0) {
+          bestScore = Math.max(...completedAttempts.map((attempt: any) => attempt.score || 0));
+          const latestAttempt = completedAttempts.sort((a: any, b: any) => 
+            (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
+          )[0];
+          lastAttemptStatus = latestAttempt.status;
+          lastAttemptDate = latestAttempt.submittedAt;
+        }
+        
+        const attemptData: AttemptSummary = {
+          testId,
+          studentId: student.id,
+          totalAttempts: completedAttempts.length, // Only count completed attempts
+          attemptsAllowed,
+          canCreateNewAttempt,
+          bestScore,
+          lastAttemptStatus,
+          lastAttemptDate,
+          attempts: completedAttempts.map((attempt: any, index: number) => ({
+            attemptNumber: index + 1,
+            attemptId: attempt.id,
+            status: attempt.status,
+            score: attempt.score,
+            percentage: attempt.percentage,
+            submittedAt: attempt.submittedAt
+          }))
+        };
+        
+        // Store additional data for UI display including remaining time for active attempts
+        (attemptData as any).activeAttempts = activeAttempts.length;
+        (attemptData as any).hasActiveAttempt = activeAttempts.length > 0;
+        
+        // Calculate remaining time for active attempt if exists
+        if (activeAttempts.length > 0) {
+          const activeAttempt = activeAttempts[0];
+          const now = new Date();
+          let remainingMinutes = 0;
+          
+          if (activeAttempt.endTime) {
+            const endTime = activeAttempt.endTime.toDate ? activeAttempt.endTime.toDate() : new Date(activeAttempt.endTime.seconds * 1000);
+            remainingMinutes = Math.max(0, Math.floor((endTime.getTime() - now.getTime()) / (1000 * 60)));
+          } else if (activeAttempt.startedAt && activeAttempt.totalTimeAllowed) {
+            const startTime = activeAttempt.startedAt.toDate ? activeAttempt.startedAt.toDate() : new Date(activeAttempt.startedAt.seconds * 1000);
+            const endTime = new Date(startTime.getTime() + (activeAttempt.totalTimeAllowed * 1000));
+            remainingMinutes = Math.max(0, Math.floor((endTime.getTime() - now.getTime()) / (1000 * 60)));
+          }
+          
+          (attemptData as any).activeAttemptRemainingMinutes = remainingMinutes;
+          (attemptData as any).activeAttemptId = activeAttempt.id;
+        }
+        
+        console.log('✅ Attempt summary calculated:', {
+          totalAttempts: allAttempts.length,
+          completedAttempts: completedAttempts.length,
+          activeAttempts: activeAttempts.length,
+          attemptsAllowed,
+          canCreateNewAttempt
+        });
+        
         setAttemptInfo(attemptData);
         
         // Set the test data
@@ -136,15 +256,75 @@ export default function TestPage() {
     try {
       setStartingTest(true);
       
-      // Import services
-      const { AttemptManagementService } = await import('@/apiservices/attemptManagementService');
+      // Check for active attempts first - use the data we already have
+      if ((attemptInfo as any).hasActiveAttempt) {
+        // Find the active attempt from our already loaded data
+        const { collection, query, where, getDocs } = await import('firebase/firestore');
+        const { firestore } = await import('@/utils/firebase-client');
+        
+        const activeAttemptsQuery = query(
+          collection(firestore, 'testAttempts'),
+          where('testId', '==', testId),
+          where('studentId', '==', student.id)
+        );
+        
+        const activeAttemptsSnapshot = await getDocs(activeAttemptsQuery);
+        let activeAttemptId: string | null = null;
+        let validActiveAttempt = false;
+        
+        const now = new Date();
+        
+        activeAttemptsSnapshot.forEach((doc) => {
+          const attemptData = doc.data();
+          
+          // Check if attempt is truly active and within time limits
+          const isActiveStatus = attemptData.status === 'in_progress' || 
+                                 attemptData.status === 'not_started' || 
+                                 attemptData.status === 'paused' ||
+                                 (!attemptData.submittedAt && !attemptData.status);
+          
+          if (isActiveStatus) {
+            // Check if still within time limits
+            let isWithinTime = true;
+            if (attemptData.endTime) {
+              const endTime = attemptData.endTime.toDate ? attemptData.endTime.toDate() : new Date(attemptData.endTime.seconds * 1000);
+              isWithinTime = now <= endTime;
+            } else if (attemptData.startedAt && attemptData.totalTimeAllowed) {
+              const startTime = attemptData.startedAt.toDate ? attemptData.startedAt.toDate() : new Date(attemptData.startedAt.seconds * 1000);
+              const endTime = new Date(startTime.getTime() + (attemptData.totalTimeAllowed * 1000));
+              isWithinTime = now <= endTime;
+            }
+            
+            if (isWithinTime) {
+              activeAttemptId = doc.id;
+              validActiveAttempt = true;
+              console.log('✅ Found valid active attempt to resume:', activeAttemptId);
+            } else {
+              console.log('⏰ Found expired attempt, will auto-submit:', doc.id);
+              // Could auto-submit expired attempt here if needed
+            }
+          }
+        });
+        
+        // If there's a valid active attempt, resume it
+        if (activeAttemptId && validActiveAttempt) {
+          console.log('🔄 Resuming existing attempt:', activeAttemptId);
+          router.push(`/student/test/${testId}/take?attemptId=${activeAttemptId}`);
+          return;
+        }
+      }
       
-      // Check if student can create new attempt
+      // Only create new attempt if no valid active attempts exist and under limit
       if (!attemptInfo.canCreateNewAttempt) {
         alert('Cannot start test - attempt limit reached or test not available');
         setStartingTest(false);
         return;
       }
+      
+      console.log('🆕 Creating new attempt...');
+      
+      // Import services for creating new attempt
+      const { AttemptManagementService } = await import('@/apiservices/attemptManagementService');
       
       // Get student's enrollment to find their class ID
       const { getEnrollmentsByStudent } = await import('@/services/studentEnrollmentService');
@@ -156,13 +336,15 @@ export default function TestPage() {
       );
       
       const classId = relevantEnrollment?.classId || enrollments[0]?.classId || 'unknown';
+      const className = relevantEnrollment?.className || enrollments[0]?.className || 'Unknown Class';
       
       // Create a new attempt
       const attemptId = await AttemptManagementService.createAttempt(
         testId,
         student.id,
         student.name,
-        classId
+        classId,
+        className
       );
       
       console.log('✅ New attempt created:', attemptId);
@@ -432,7 +614,7 @@ export default function TestPage() {
                       </div>
                       
                       <div>
-                        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Attempts Used</p>
+                        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Completed Attempts</p>
                         <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
                           {attemptInfo.totalAttempts}
                         </p>
@@ -441,24 +623,53 @@ export default function TestPage() {
                       <div>
                         <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Status</p>
                         <p className={`mt-1 text-sm font-medium ${
-                          attemptInfo.canCreateNewAttempt 
-                            ? 'text-green-600 dark:text-green-400' 
-                            : 'text-red-600 dark:text-red-400'
+                          (attemptInfo as any).hasActiveAttempt
+                            ? 'text-blue-600 dark:text-blue-400'
+                            : attemptInfo.canCreateNewAttempt 
+                              ? 'text-green-600 dark:text-green-400' 
+                              : 'text-red-600 dark:text-red-400'
                         }`}>
-                          {attemptInfo.canCreateNewAttempt ? 'Can attempt' : 'Cannot attempt'}
+                          {(attemptInfo as any).hasActiveAttempt 
+                            ? 'Resume Available' 
+                            : attemptInfo.canCreateNewAttempt 
+                              ? 'Can attempt' 
+                              : 'Cannot attempt'
+                          }
                         </p>
                       </div>
                     </div>
+                    
+                    {/* Active attempts indicator */}
+                    {(attemptInfo as any).activeAttempts > 0 && (
+                      <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <Clock className="h-4 w-4 text-blue-500 mr-2" />
+                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                              You have an active test in progress. Click "Resume Test" to continue.
+                            </p>
+                          </div>
+                          {(attemptInfo as any).activeAttemptRemainingMinutes !== undefined && (
+                            <div className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                              {(attemptInfo as any).activeAttemptRemainingMinutes > 0 
+                                ? `${(attemptInfo as any).activeAttemptRemainingMinutes} min left`
+                                : 'Time expired'
+                              }
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     
                     {attemptInfo.totalAttempts > 0 && (
                       <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                           You have completed {attemptInfo.totalAttempts} attempt{attemptInfo.totalAttempts !== 1 ? 's' : ''} for this test.
-                          {attemptInfo.canCreateNewAttempt ? (
+                          {attemptInfo.canCreateNewAttempt && !(attemptInfo as any).hasActiveAttempt ? (
                             ` You can attempt ${attemptInfo.attemptsAllowed - attemptInfo.totalAttempts} more time${attemptInfo.attemptsAllowed - attemptInfo.totalAttempts !== 1 ? 's' : ''}.`
-                          ) : (
+                          ) : !attemptInfo.canCreateNewAttempt ? (
                             ' You have used all available attempts.'
-                          )}
+                          ) : ''}
                         </p>
                         
                         {attemptInfo.totalAttempts > 0 && (
@@ -493,13 +704,15 @@ export default function TestPage() {
                 <Button
                   onClick={handleStartTest}
                   className="inline-flex items-center"
-                  disabled={!canStart || !attemptInfo?.canCreateNewAttempt || startingTest}
+                  disabled={!canStart || (!(attemptInfo as any)?.hasActiveAttempt && !attemptInfo?.canCreateNewAttempt) || startingTest}
                 >
                   {startingTest ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Starting...
+                      {(attemptInfo as any)?.hasActiveAttempt ? 'Resuming...' : 'Starting...'}
                     </>
+                  ) : (attemptInfo as any)?.hasActiveAttempt ? (
+                    'Resume Test'
                   ) : attemptInfo?.canCreateNewAttempt ? (
                     attemptInfo.totalAttempts > 0 ? 'Start New Attempt' : 'Start Test'
                   ) : attemptInfo ? (

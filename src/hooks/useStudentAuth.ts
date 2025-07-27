@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
-import { auth } from '@/utils/firebase-client';
+import { query, collection, where, getDocs } from 'firebase/firestore';
+import { auth, firestore } from '@/utils/firebase-client';
 import { StudentDocument } from '@/models/studentSchema';
+import { getStudentFromCache, setStudentCache, clearStudentCache } from './useStudentAuthContext';
 
 interface AuthState {
   user: User | null;
@@ -25,47 +27,97 @@ export const useStudentAuth = () => {
         setAuthState(prev => ({ ...prev, loading: true, error: null }));
 
         if (user) {
-          // Get ID token and verify student status
-          const idToken = await user.getIdToken();
+          // Check custom claims for student role
+          const idTokenResult = await user.getIdTokenResult();
+          const isStudent = idTokenResult.claims.student || idTokenResult.claims.role === 'student';
           
-          // Call our auth API to verify student status and get data
-          const response = await fetch('/api/student/auth', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ idToken }),
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setAuthState({
-              user,
-              student: data.student,
-              loading: false,
-              error: null,
-            });
-            
-            // Store token in localStorage for API calls
-            localStorage.setItem('authToken', idToken);
-          } else {
+          if (!isStudent) {
             // User exists but not a valid student
             await signOut(auth);
             setAuthState({
               user: null,
               student: null,
               loading: false,
-              error: 'Invalid student account',
+              error: 'Access denied. User is not a student.',
+            });
+            return;
+          }
+
+          // Try to get student data from cache first
+          const cachedStudent = getStudentFromCache();
+          if (cachedStudent && cachedStudent.uid === user.uid) {
+            setAuthState({
+              user,
+              student: cachedStudent,
+              loading: false,
+              error: null,
+            });
+            
+            // Store token in localStorage
+            const idToken = await user.getIdToken();
+            localStorage.setItem('authToken', idToken);
+            return;
+          }
+
+          // Fetch student data from Firestore if not cached
+          try {
+            const studentsQuery = query(
+              collection(firestore, 'students'),
+              where('uid', '==', user.uid)
+            );
+            
+            const studentsSnapshot = await getDocs(studentsQuery);
+            
+            if (studentsSnapshot.empty) {
+              setAuthState({
+                user: null,
+                student: null,
+                loading: false,
+                error: 'Student record not found',
+              });
+              return;
+            }
+
+            const studentDoc = studentsSnapshot.docs[0];
+            const studentData = {
+              id: studentDoc.id,
+              ...studentDoc.data(),
+              uid: user.uid
+            } as StudentDocument;
+
+            // Cache the student data
+            setStudentCache(studentData);
+
+            setAuthState({
+              user,
+              student: studentData,
+              loading: false,
+              error: null,
+            });
+            
+            // Store token in localStorage for API calls (if needed for other services)
+            const idToken = await user.getIdToken();
+            localStorage.setItem('authToken', idToken);
+          } catch (firestoreError) {
+            console.error('Error fetching student data:', firestoreError);
+            setAuthState({
+              user: null,
+              student: null,
+              loading: false,
+              error: 'Failed to load student data',
             });
           }
         } else {
           // No user logged in
+          clearStudentCache();
           setAuthState({
             user: null,
             student: null,
             loading: false,
             error: null,
           });
+          // Clear token from localStorage
+          localStorage.removeItem('authToken');
         }
       } catch (error) {
         console.error('Auth state change error:', error);
@@ -122,12 +174,46 @@ export const useStudentAuth = () => {
     }
   };
 
+  // Refresh student data function
+  const refreshStudent = useCallback(async () => {
+    if (!authState.user) return;
+
+    try {
+      const studentsQuery = query(
+        collection(firestore, 'students'),
+        where('uid', '==', authState.user.uid)
+      );
+      
+      const studentsSnapshot = await getDocs(studentsQuery);
+      
+      if (!studentsSnapshot.empty) {
+        const studentDoc = studentsSnapshot.docs[0];
+        const studentData = {
+          id: studentDoc.id,
+          ...studentDoc.data(),
+          uid: authState.user.uid
+        } as StudentDocument;
+
+        // Update cache
+        setStudentCache(studentData);
+
+        setAuthState(prev => ({
+          ...prev,
+          student: studentData,
+        }));
+      }
+    } catch (error) {
+      console.error('Error refreshing student data:', error);
+    }
+  }, [authState.user]);
+
   // Check if user is authenticated student
   const isAuthenticated = !!authState.user && !!authState.student;
 
   return {
     ...authState,
     isAuthenticated,
+    refreshStudent,
     login,
     logout,
   };

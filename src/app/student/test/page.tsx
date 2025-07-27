@@ -20,6 +20,7 @@ export default function StudentTests() {
   // States
   const [tests, setTests] = useState<Test[]>([]);
   const [enrollments, setEnrollments] = useState<StudentEnrollment[]>([]);
+  const [testAttempts, setTestAttempts] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
@@ -79,6 +80,93 @@ export default function StudentTests() {
       console.error('Error loading enrollments:', error);
       setError('Failed to load enrollment data. Please refresh the page.');
       return [];
+    }
+  };
+
+  // Function to load test attempts for the student
+  const loadTestAttempts = async () => {
+    try {
+      console.log('🔍 Loading test attempts for student:', student?.id);
+      
+      // Import services
+      const { AttemptManagementService } = await import('@/apiservices/attemptManagementService');
+      
+      // Get all test attempts for this student
+      const { collection, query, where, getDocs } = await import('firebase/firestore');
+      const { firestore } = await import('@/utils/firebase-client');
+      
+      const attemptsQuery = query(
+        collection(firestore, 'testAttempts'),
+        where('studentId', '==', student?.id || '')
+      );
+      
+      const attemptsSnapshot = await getDocs(attemptsQuery);
+      const attempts: Record<string, any> = {};
+      
+      attemptsSnapshot.forEach((doc) => {
+        const attemptData = doc.data();
+        const testId = attemptData.testId;
+        
+        if (!attempts[testId]) {
+          attempts[testId] = {
+            attempts: [], // All attempts (completed + incomplete)
+            completedAttempts: [], // Only completed attempts
+            activeAttempts: [], // Only active/incomplete attempts
+            canAttemptAgain: true,
+            bestScore: 0,
+            latestAttempt: null
+          };
+        }
+        
+        const attempt = {
+          id: doc.id,
+          ...attemptData
+        };
+        
+        // Add to all attempts
+        attempts[testId].attempts.push(attempt);
+        
+        // Categorize the attempt based on status
+        const isCompleted = attemptData.status === 'submitted' || 
+                           attemptData.status === 'auto_submitted' || 
+                           attemptData.submittedAt;
+        
+        const isActive = attemptData.status === 'active' || 
+                        attemptData.status === 'paused' || 
+                        (!attemptData.submittedAt && !attemptData.status);
+        
+        if (isCompleted) {
+          attempts[testId].completedAttempts.push(attempt);
+          
+          // Update best score only from completed attempts
+          if (attemptData.score > attempts[testId].bestScore) {
+            attempts[testId].bestScore = attemptData.score;
+          }
+          
+          // Update latest completed attempt
+          if (!attempts[testId].latestAttempt || 
+              (attemptData.submittedAt && attemptData.submittedAt.seconds > attempts[testId].latestAttempt.submittedAt?.seconds)) {
+            attempts[testId].latestAttempt = attemptData;
+          }
+        } else if (isActive) {
+          attempts[testId].activeAttempts.push(attempt);
+        }
+      });
+      
+      setTestAttempts(attempts);
+      console.log('✅ Loaded test attempts:', {
+        totalTests: Object.keys(attempts).length,
+        breakdown: Object.entries(attempts).map(([testId, data]: [string, any]) => ({
+          testId,
+          totalAttempts: data.attempts.length,
+          completedAttempts: data.completedAttempts.length,
+          activeAttempts: data.activeAttempts.length
+        }))
+      });
+      return attempts;
+    } catch (error) {
+      console.error('Error loading test attempts:', error);
+      return {};
     }
   };
   
@@ -144,8 +232,11 @@ export default function StudentTests() {
       setLoading(true);
       setError(null);
       
-      // Load enrollments first
-      const enrollmentsData = await loadEnrollments();
+      // Load enrollments and test attempts in parallel
+      const [enrollmentsData, attemptsData] = await Promise.all([
+        loadEnrollments(),
+        loadTestAttempts()
+      ]);
       
       if (enrollmentsData.length === 0) {
         setLoading(false);
@@ -290,6 +381,139 @@ export default function StudentTests() {
   // Handle start test
   const handleStartTest = (testId: string) => {
     router.push(`/student/test/${testId}`);
+  };
+
+  // Handle view results
+  const handleViewResults = (testId: string) => {
+    router.push(`/student/test/${testId}/result`);
+  };
+
+  // Check if student can attempt test again
+  const canAttemptTest = (test: Test) => {
+    const attempts = testAttempts[test.id];
+    if (!attempts || attempts.attempts.length === 0) {
+      return { canAttempt: true, reason: 'No attempts yet' };
+    }
+
+    // Use the categorized attempts from loadTestAttempts
+    const completedAttempts = attempts.completedAttempts || [];
+    const activeAttempts = attempts.activeAttempts || [];
+
+    // If there's an active attempt, student can resume
+    if (activeAttempts.length > 0) {
+      return { canAttempt: true, reason: 'Resume incomplete attempt' };
+    }
+
+    // Check if test allows multiple attempts (flexible tests have attemptsAllowed)
+    if (test.type === 'flexible') {
+      const flexTest = test as FlexibleTest;
+      const maxAttempts = flexTest.attemptsAllowed || 1;
+      
+      if (completedAttempts.length < maxAttempts) {
+        return { canAttempt: true, reason: `${completedAttempts.length}/${maxAttempts} attempts used` };
+      } else {
+        return { 
+          canAttempt: false, 
+          reason: `Maximum attempts (${maxAttempts}) reached`
+        };
+      }
+    }
+
+    // For live tests, check if there are any completed attempts
+    if (completedAttempts.length > 0) {
+      return { 
+        canAttempt: false, 
+        reason: 'Test already completed'
+      };
+    }
+
+    // If no completed attempts, allow attempt
+    return { canAttempt: true, reason: 'Can start test' };
+  };
+
+  // Get test button configuration
+  const getTestButton = (test: Test) => {
+    const status = getTestStatus(test);
+    const attemptInfo = canAttemptTest(test);
+    const attempts = testAttempts[test.id];
+
+    // Use the categorized attempts from loadTestAttempts
+    const hasActiveAttempt = attempts && attempts.activeAttempts && attempts.activeAttempts.length > 0;
+    const hasCompletedAttempt = attempts && attempts.completedAttempts && attempts.completedAttempts.length > 0;
+
+    // For completed tests, always show view results if there are completed attempts
+    if (status.status === 'completed') {
+      if (hasCompletedAttempt) {
+        return {
+          text: 'View Results',
+          action: () => handleViewResults(test.id),
+          variant: 'outline' as const,
+          icon: ArrowRight,
+          disabled: false
+        };
+      } else {
+        return {
+          text: 'Test Ended',
+          action: () => {},
+          variant: 'outline' as const,
+          icon: CheckCircle,
+          disabled: true
+        };
+      }
+    }
+
+    // For live or available tests
+    if (status.status === 'live' || status.status === 'active') {
+      if (attemptInfo.canAttempt) {
+        // If there's an active attempt, show resume
+        if (hasActiveAttempt) {
+          return {
+            text: 'Resume Test',
+            action: () => handleStartTest(test.id),
+            variant: 'primary' as const,
+            icon: Play,
+            disabled: false
+          };
+        }
+        
+        // If can attempt but has completed attempts, show start new attempt
+        if (hasCompletedAttempt) {
+          return {
+            text: 'Start New Attempt',
+            action: () => handleStartTest(test.id),
+            variant: 'primary' as const,
+            icon: Play,
+            disabled: false
+          };
+        }
+        
+        // First attempt
+        return {
+          text: status.status === 'live' ? 'Join Now' : 'Start Test',
+          action: () => handleStartTest(test.id),
+          variant: status.status === 'live' ? 'primary' : 'primary' as const,
+          icon: Play,
+          disabled: false
+        };
+      } else {
+        return {
+          text: 'View Results',
+          action: () => handleViewResults(test.id),
+          variant: 'outline' as const,
+          icon: ArrowRight,
+          disabled: false
+        };
+      }
+    }
+
+    // For upcoming tests
+    return {
+      text: 'Upcoming',
+      action: () => {},
+      variant: 'outline' as const,
+      icon: Clock,
+      disabled: true
+    };
   };
 
   // Filter tests based on subject and search term
@@ -529,6 +753,10 @@ export default function StudentTests() {
                 const className = enrollment?.className || 'Unknown Class';
                 const subject = enrollment?.subject || 'Unknown Subject';
 
+                // Get button configuration
+                const buttonConfig = getTestButton(test);
+                const ButtonIcon = buttonConfig.icon;
+
                 return (
                   <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between">
@@ -547,14 +775,26 @@ export default function StudentTests() {
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                           Duration: {liveTest.duration} minutes • Ends at {formatDateTime(liveTest.actualEndTime)}
                         </p>
+                        {/* Show attempt info if exists */}
+                        {testAttempts[test.id] && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {canAttemptTest(test).reason}
+                          </p>
+                        )}
                       </div>
                       <div>
                         <Button 
-                          onClick={() => handleStartTest(test.id)}
-                          className="inline-flex items-center bg-green-600 hover:bg-green-700"
+                          onClick={buttonConfig.action}
+                          disabled={buttonConfig.disabled}
+                          variant={buttonConfig.variant}
+                          className={`inline-flex items-center ${
+                            buttonConfig.variant === 'primary' && !buttonConfig.disabled 
+                              ? 'bg-green-600 hover:bg-green-700' 
+                              : ''
+                          }`}
                         >
-                          <Play className="w-4 h-4 mr-2" />
-                          Join Now
+                          <ButtonIcon className="w-4 h-4 mr-2" />
+                          {buttonConfig.text}
                         </Button>
                       </div>
                     </div>
@@ -588,6 +828,10 @@ export default function StudentTests() {
                 const className = enrollment?.className || 'Unknown Class';
                 const subject = enrollment?.subject || 'Unknown Subject';
 
+                // Get button configuration
+                const buttonConfig = getTestButton(test);
+                const ButtonIcon = buttonConfig.icon;
+
                 return (
                   <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between">
@@ -606,14 +850,22 @@ export default function StudentTests() {
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                           Duration: {flexTest.duration || 'No time limit'} minutes • Available until {formatDateTime(flexTest.availableTo)}
                         </p>
+                        {/* Show attempt info if exists */}
+                        {testAttempts[test.id] && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {canAttemptTest(test).reason}
+                          </p>
+                        )}
                       </div>
                       <div>
                         <Button 
-                          onClick={() => handleStartTest(test.id)}
+                          onClick={buttonConfig.action}
+                          disabled={buttonConfig.disabled}
+                          variant={buttonConfig.variant}
                           className="inline-flex items-center"
                         >
-                          <Play className="w-4 h-4 mr-2" />
-                          Start Test
+                          <ButtonIcon className="w-4 h-4 mr-2" />
+                          {buttonConfig.text}
                         </Button>
                       </div>
                     </div>
@@ -702,6 +954,10 @@ export default function StudentTests() {
                 const className = enrollment?.className || 'Unknown Class';
                 const subject = enrollment?.subject || 'Unknown Subject';
 
+                // Get button configuration
+                const buttonConfig = getTestButton(test);
+                const ButtonIcon = buttonConfig.icon;
+
                 return (
                   <div key={test.id} className="p-6 hover:bg-gray-50 dark:hover:bg-gray-700">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between">
@@ -717,15 +973,25 @@ export default function StudentTests() {
                         <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
                           {subject} • {className}
                         </p>
+                        {/* Show attempt info if exists */}
+                        {testAttempts[test.id] && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Best Score: {testAttempts[test.id].bestScore || 0} • {testAttempts[test.id].completedAttempts?.length || 0} completed attempt{(testAttempts[test.id].completedAttempts?.length || 0) !== 1 ? 's' : ''}
+                            {testAttempts[test.id].activeAttempts?.length > 0 && (
+                              <span> • {testAttempts[test.id].activeAttempts.length} in progress</span>
+                            )}
+                          </p>
+                        )}
                       </div>
                       <div className="mt-4 md:mt-0">
                         <Button 
-                          onClick={() => router.push(`/student/test/${test.id}/result`)}
-                          variant="outline"
+                          onClick={buttonConfig.action}
+                          disabled={buttonConfig.disabled}
+                          variant={buttonConfig.variant}
                           className="inline-flex items-center"
                         >
-                          <ArrowRight className="w-4 h-4 mr-2" />
-                          View Results
+                          <ButtonIcon className="w-4 h-4 mr-2" />
+                          {buttonConfig.text}
                         </Button>
                       </div>
                     </div>

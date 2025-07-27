@@ -381,10 +381,13 @@ export class SubmissionService {
         return null;
       }
       
-      return {
+      const data = submissionDoc.data();
+      const submission = {
         id: submissionDoc.id,
-        ...submissionDoc.data()
+        ...data
       } as StudentSubmission;
+      
+      return submission;
     } catch (error) {
       console.error('Error getting submission:', error);
       throw error;
@@ -461,6 +464,17 @@ export class SubmissionService {
         gradedAt: Timestamp.now()
       };
 
+      // Update finalAnswers with essay marks
+      const updatedFinalAnswers = submission.finalAnswers.map(finalAnswer => {
+        if (finalAnswer.questionType === 'essay' && finalAnswer.questionId === questionId) {
+          return {
+            ...finalAnswer,
+            marksAwarded
+          };
+        }
+        return finalAnswer;
+      });
+
       // Update submission
       const updatedEssayResults = [...(submission.essayResults || []), essayResult];
       const totalScore = (submission.autoGradedScore || 0) + 
@@ -468,6 +482,7 @@ export class SubmissionService {
       
       batch.update(submissionRef, {
         essayResults: updatedEssayResults,
+        finalAnswers: updatedFinalAnswers,
         totalScore,
         percentage: Math.round((totalScore / submission.maxScore) * 100),
         passStatus: totalScore >= (submission.maxScore * 0.6) ? 'passed' : 'failed',
@@ -551,8 +566,6 @@ export class SubmissionService {
   // Update essay grades for a submission
   static async updateEssayGrades(submissionId: string, grades: Array<{questionId: string, score: number, maxScore: number, feedback: string}>): Promise<void> {
     try {
-      console.log('💾 Updating essay grades for submission:', submissionId);
-      
       const submissionRef = doc(firestore, this.COLLECTIONS.SUBMISSIONS, submissionId);
       const submissionDoc = await getDoc(submissionRef);
       
@@ -563,32 +576,64 @@ export class SubmissionService {
       const submission = submissionDoc.data() as StudentSubmission;
       
       // Update essay results
-      const essayResults: EssayResult[] = grades.map(grade => ({
-        questionId: grade.questionId,
-        questionText: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.questionText || '',
-        studentAnswer: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.textContent || '',
-        wordCount: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.textContent?.split(' ').length || 0,
-        marksAwarded: grade.score,
-        maxMarks: grade.maxScore,
-        feedback: grade.feedback,
-        gradedBy: 'teacher', // TODO: Get actual teacher ID from context
-        gradedAt: Timestamp.now()
-      }));
+      const essayResults: EssayResult[] = grades.map(grade => {
+        // Ensure score and maxScore are valid numbers
+        const score = typeof grade.score === 'number' ? grade.score : Number(grade.score) || 0;
+        const maxScore = typeof grade.maxScore === 'number' ? grade.maxScore : Number(grade.maxScore) || 0;
+        
+        return {
+          questionId: grade.questionId,
+          questionText: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.questionText || '',
+          studentAnswer: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.textContent || '',
+          wordCount: submission.finalAnswers.find(a => a.questionId === grade.questionId)?.textContent?.split(' ').length || 0,
+          marksAwarded: score,
+          maxMarks: maxScore,
+          feedback: grade.feedback,
+          gradedBy: 'teacher', // TODO: Get actual teacher ID from context
+          gradedAt: Timestamp.now()
+        };
+      });
+      
+      // Update finalAnswers with essay marks
+      const updatedFinalAnswers = submission.finalAnswers.map(finalAnswer => {
+        if (finalAnswer.questionType === 'essay') {
+          const grade = grades.find(g => g.questionId === finalAnswer.questionId);
+          if (grade) {
+            const score = typeof grade.score === 'number' ? grade.score : Number(grade.score) || 0;
+            return {
+              ...finalAnswer,
+              marksAwarded: score
+            };
+          }
+        }
+        return finalAnswer;
+      });
       
       // Calculate total score
-      const essayScore = grades.reduce((sum, grade) => sum + grade.score, 0);
+      const essayScore = grades.reduce((sum, grade) => {
+        const score = typeof grade.score === 'number' ? grade.score : Number(grade.score) || 0;
+        return sum + score;
+      }, 0);
       const totalScore = (submission.autoGradedScore || 0) + essayScore;
       const percentage = Math.round((totalScore / submission.maxScore) * 100);
       
+      // Check if all essay questions have been graded
+      const allEssayQuestions = submission.finalAnswers.filter(fa => fa.questionType === 'essay');
+      const gradedEssayQuestions = essayResults.filter(er => er.marksAwarded !== undefined && er.marksAwarded !== null);
+      const allEssayQuestionsGraded = allEssayQuestions.length === gradedEssayQuestions.length && allEssayQuestions.length > 0;
+      
       // Update submission
-      await updateDoc(submissionRef, {
+      const updateData = {
         essayResults,
+        finalAnswers: updatedFinalAnswers,
         totalScore,
         percentage,
         passStatus: percentage >= 60 ? 'passed' : 'failed',
-        manualGradingPending: false,
+        manualGradingPending: !allEssayQuestionsGraded,
         updatedAt: Timestamp.now()
-      });
+      };
+      
+      await updateDoc(submissionRef, updateData);
       
       console.log('✅ Essay grades updated successfully');
     } catch (error) {

@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "cross-env TZ=Australia/Melbourne next dev --turbopack",
+    "dev:webpack": "cross-env TZ=Australia/Melbourne next dev",
+    "dev:turbo": "cross-env TZ=Australia/Melbourne next dev --turbopack",
     "build": "cross-env TZ=Australia/Melbourne next build",
     "build:firebase": "cross-env TZ=Australia/Melbourne FIREBASE_DEPLOY=true next build",
     "start": "cross-env TZ=Australia/Melbourne next start",

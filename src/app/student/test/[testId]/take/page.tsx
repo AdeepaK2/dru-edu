@@ -1693,23 +1693,27 @@ export default function TestTakePage() {
                 Previous
               </Button>
               
-              <Button
-                variant="outline"
-                onClick={goToNextQuestion}
-                disabled={currentIndex === test.questions.length - 1}
-                className={currentIndex === test.questions.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}
-              >
-                Next
-                <ChevronRight className="w-4 h-4 ml-2" />
-              </Button>
+              {/* Only show Next button if not on the last question */}
+              {currentIndex < test.questions.length - 1 && (
+                <Button
+                  variant="outline"
+                  onClick={goToNextQuestion}
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-2" />
+                </Button>
+              )}
             </div>
             
-            <Button
-              onClick={() => setShowConfirmSubmit(true)}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Submit Test
-            </Button>
+            {/* Only show Submit button on the last question */}
+            {currentIndex === test.questions.length - 1 && (
+              <Button
+                onClick={() => setShowConfirmSubmit(true)}
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Submit Test
+              </Button>
+            )}
           </div>
         </div>
       </div>

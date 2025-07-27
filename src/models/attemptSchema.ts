@@ -31,6 +31,7 @@ export interface TestAttempt {
   
   // Timing management
   startedAt: Timestamp; // When attempt was first started
+  endTime: Timestamp; // Calculated end time (startedAt + duration)
   lastActiveAt: Timestamp; // Last activity timestamp
   submittedAt?: Timestamp; // When submitted (if completed)
   
