@@ -1,181 +1,62 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
+import Image from 'next/image';
 
 const Navbar: React.FC = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const pathname = usePathname();
-
-  useEffect(() => {
-    const handleScroll = () => {
-      const isScrolled = window.scrollY > 10;
-      if (isScrolled !== scrolled) {
-        setScrolled(isScrolled);
-      }
-    };
-
-    document.addEventListener('scroll', handleScroll, { passive: true });
-    return () => document.removeEventListener('scroll', handleScroll);
-  }, [scrolled]);
-
-  const isActive = (path: string) => {
-    return pathname === path;
-  };
-
   return (
-    <nav 
-      className={`fixed top-0 w-full z-50 transition-all duration-300 ${
-        scrolled 
-          ? 'bg-white dark:bg-gray-800 shadow-md py-2' 
-          : 'bg-transparent py-4'
-      }`}
-    >
-      <div className="container mx-auto px-6 max-w-6xl">
-        <div className="flex justify-between items-center">
+    <nav className="bg-white/15 backdrop-blur-md border-b border-white/30 sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <Link href="/" className="flex items-center">
-              <span className="font-heading text-xl font-bold text-primary-700 dark:text-primary-400">Dr. U Education</span>
-            </Link>
-          </div>
-          
-          {/* Desktop navigation */}
-          <div className="hidden md:flex items-center space-x-8">
-            <Link 
-              href="/" 
-              className={`font-medium transition-colors ${
-                isActive('/') 
-                  ? 'text-primary-700 dark:text-primary-400' 
-                  : 'text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400'
-              }`}
-            >
-              Home
-            </Link>
-            <Link 
-              href="/courses" 
-              className={`font-medium transition-colors ${
-                isActive('/courses') 
-                  ? 'text-primary-700 dark:text-primary-400' 
-                  : 'text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400'
-              }`}
-            >
-              Courses
-            </Link>
-            <Link 
-              href="/about" 
-              className={`font-medium transition-colors ${
-                isActive('/about') 
-                  ? 'text-primary-700 dark:text-primary-400' 
-                  : 'text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400'
-              }`}
-            >
-              About
-            </Link>
-            <Link 
-              href="/contact" 
-              className={`font-medium transition-colors ${
-                isActive('/contact') 
-                  ? 'text-primary-700 dark:text-primary-400' 
-                  : 'text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400'
-              }`}
-            >
-              Contact
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link 
-                href="/teacher/login" 
-                className="font-medium text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400 transition-colors"
-              >
-                Teacher Login
-              </Link>
-              <Link 
-                href="/admin/login" 
-                className="btn-primary"
-              >
-                Admin Login
-              </Link>
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center">
+                <Image 
+                  src="/Logo.png" 
+                  alt="Dr. U Education Logo" 
+                  width={40} 
+                  height={40} 
+                  className="rounded-full"
+                />
+              </div>
+              <h1 className="text-2xl font-bold text-white tracking-tight">Dr. U Education</h1>
             </div>
           </div>
-          
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="text-secondary-600 dark:text-secondary-300 hover:text-primary-700 dark:hover:text-primary-400 focus:outline-none"
-            >              {isOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+          <div className="hidden md:block">
+            <div className="ml-10 flex items-center space-x-6">
+              <a href="#about" className="text-white/90 hover:text-white hover:bg-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200">About</a>
+              <a href="#subjects" className="text-white/90 hover:text-white hover:bg-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200">Subjects</a>
+              <a href="#testimonials" className="text-white/90 hover:text-white hover:bg-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200">Reviews</a>
+              <a href="#contact" className="text-white/90 hover:text-white hover:bg-white/10 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200">Contact</a>
+              
+              {/* Login Dropdown */}
+              <div className="relative group">
+                <button className="bg-[#0088e0] hover:bg-[#0066b3] text-white px-6 py-2 rounded-full text-sm font-semibold transition-all duration-200 flex items-center space-x-2 shadow-lg">
+                  <span>Login</span>
+                  <svg className="w-4 h-4 transition-transform group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 border border-gray-100">
+                  <div className="py-2">
+                    <Link href="/student" className="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-[#01143d] transition-colors">
+                      <svg className="w-5 h-5 mr-3 text-[#0088e0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      Student Portal
+                    </Link>
+                    <Link href="/teacher" className="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 hover:text-[#01143d] transition-colors">
+                      <svg className="w-5 h-5 mr-3 text-[#0088e0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C20.832 18.477 19.246 18 17.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                      </svg>
+                      Teacher Portal
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      {/* Mobile Menu */}
-      <div
-        className={`md:hidden absolute top-full left-0 right-0 bg-white dark:bg-gray-800 shadow-lg transition-all duration-300 ease-in-out ${
-          isOpen ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'
-        }`}
-      >
-        <div className="container mx-auto px-6 py-4 space-y-4">
-          <Link
-            href="/"
-            className={`block py-2 px-4 rounded-md ${
-              isActive('/') 
-                ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-400' 
-                : 'text-secondary-600 dark:text-secondary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            onClick={() => setIsOpen(false)}
-          >
-            Home
-          </Link>
-          <Link
-            href="/courses"
-            className={`block py-2 px-4 rounded-md ${
-              isActive('/courses') 
-                ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-400' 
-                : 'text-secondary-600 dark:text-secondary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            onClick={() => setIsOpen(false)}
-          >
-            Courses
-          </Link>
-          <Link
-            href="/about"
-            className={`block py-2 px-4 rounded-md ${
-              isActive('/about') 
-                ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-400' 
-                : 'text-secondary-600 dark:text-secondary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            onClick={() => setIsOpen(false)}
-          >
-            About
-          </Link>
-          <Link
-            href="/contact"
-            className={`block py-2 px-4 rounded-md ${
-              isActive('/contact') 
-                ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-400' 
-                : 'text-secondary-600 dark:text-secondary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-            }`}
-            onClick={() => setIsOpen(false)}
-          >
-            Contact
-          </Link>
-          <Link
-            href="/teacher/login"
-            className="block py-2 px-4 rounded-md text-secondary-600 dark:text-secondary-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-            onClick={() => setIsOpen(false)}
-          >
-            Teacher Login
-          </Link>
-          <Link
-            href="/admin/login"
-            className="block w-full py-2 px-4 rounded-md bg-primary-600 text-white text-center font-medium"
-            onClick={() => setIsOpen(false)}
-          >
-            Admin Login
-          </Link>
         </div>
       </div>
     </nav>

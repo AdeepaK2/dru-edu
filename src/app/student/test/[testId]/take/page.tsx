@@ -99,9 +99,10 @@ export default function TestTakePage() {
     };
   }, [attemptId]);
 
-  // Track online/offline status for time management
+  // Track online/offline status for time management and answer sync
   useEffect(() => {
     const handleOnline = async () => {
+      console.log('🌐 Connection restored - syncing data...');
       setIsOnline(true);
       
       if (!attemptId) return;
@@ -126,20 +127,34 @@ export default function TestTakePage() {
           setWasOffline(timeCalc.offlineTime > 0);
           console.log('🔌 Reconnected - time remaining:', timeCalc.timeRemaining);
           console.log('🔌 Offline time:', timeCalc.offlineTime, 'seconds');
+          console.log('🔌 Server time sync completed - ensuring accuracy');
           
           // Check if time expired during the reconnection process
           if (timeCalc.isExpired) {
             console.log('⏰ Test expired during reconnection, auto-submitting...');
             setTimeExpired(true);
             await handleAutoSubmit();
+            return;
           }
         }
+        
+        // 🔄 CRITICAL: Sync offline answers and reload from realtime database
+        if (test) {
+          console.log('📤 Syncing offline answers...');
+          await syncOfflineAnswers();
+          
+          console.log('🔄 Reloading answers after reconnection...');
+          await loadExistingAnswersAndFiles(attemptId, test);
+        }
+        
+        console.log('✅ Successfully synced after reconnection');
       } catch (error) {
         console.error('Error handling online reconnection:', error);
       }
     };
 
     const handleOffline = async () => {
+      console.log('📴 Connection lost - entering offline mode...');
       setIsOnline(false);
       setWasOffline(true);
       
@@ -180,50 +195,94 @@ export default function TestTakePage() {
   useEffect(() => {
     if (!test || !attemptId || remainingTime <= 0) return;
     
+    let serverSyncCounter = 0;
+    let lastServerSync = Date.now();
+    let lastServerTime = remainingTime;
+    
     const interval = setInterval(async () => {
       try {
-        // Update heartbeat and get accurate time from attempt management
-        const { AttemptManagementService } = await import('@/apiservices/attemptManagementService');
-        const timeCalc = await AttemptManagementService.updateAttemptTime(attemptId);
+        serverSyncCounter++;
+        const now = Date.now();
         
-        if (timeCalc) {
-          setRemainingTime(timeCalc.timeRemaining);
+        // Calculate current estimated time for sync frequency decisions
+        const elapsedSinceLastSync = Math.floor((now - lastServerSync) / 1000);
+        const currentEstimatedTime = Math.max(0, lastServerTime - elapsedSinceLastSync);
+        
+        // Determine sync frequency based on remaining time
+        let syncInterval = 10; // Default: sync every 10 seconds
+        if (currentEstimatedTime <= 300) { // Last 5 minutes
+          syncInterval = 5; // Sync every 5 seconds
+        }
+        if (currentEstimatedTime <= 60) { // Last minute
+          syncInterval = 2; // Sync every 2 seconds
+        }
+        
+        // Check if we should sync with server
+        const shouldSyncWithServer = serverSyncCounter % syncInterval === 0;
+        
+        if (shouldSyncWithServer) {
+          console.log('🔄 Syncing time with server...');
+          const { AttemptManagementService } = await import('@/apiservices/attemptManagementService');
+          const timeCalc = await AttemptManagementService.updateAttemptTime(attemptId);
           
-          if (timeCalc.isExpired) {
-            clearInterval(interval);
-            setTimeExpired(true);
-            console.log('⏰ Time expired, auto-submitting test...');
-            await handleAutoSubmit();
-            return;
-          }
-        } else {
-          // Fallback to local countdown if attempt service fails
-          setRemainingTime(prev => {
-            const newTime = prev - 1;
-            if (newTime <= 0) {
+          if (timeCalc) {
+            // Update with accurate server time
+            setRemainingTime(timeCalc.timeRemaining);
+            lastServerSync = now;
+            lastServerTime = timeCalc.timeRemaining;
+            
+            console.log('✅ Server sync - remaining time:', timeCalc.timeRemaining);
+            
+            if (timeCalc.isExpired) {
               clearInterval(interval);
               setTimeExpired(true);
-              console.log('⏰ Time expired (fallback), auto-submitting test...');
-              handleAutoSubmit();
-              return 0;
+              console.log('⏰ Time expired, auto-submitting test...');
+              await handleAutoSubmit();
+              return;
             }
-            return newTime;
-          });
+          } else {
+            // Server failed, use local countdown
+            const elapsedSinceLastSync = Math.floor((now - lastServerSync) / 1000);
+            const estimatedTime = Math.max(0, lastServerTime - elapsedSinceLastSync);
+            setRemainingTime(estimatedTime);
+            
+            if (estimatedTime <= 0) {
+              clearInterval(interval);
+              setTimeExpired(true);
+              console.log('⏰ Time expired (server unavailable), auto-submitting...');
+              handleAutoSubmit();
+              return;
+            }
+          }
+        } else {
+          // Between server syncs, use precise local countdown
+          const elapsedSinceLastSync = Math.floor((now - lastServerSync) / 1000);
+          const estimatedTime = Math.max(0, lastServerTime - elapsedSinceLastSync);
+          setRemainingTime(estimatedTime);
+          
+          if (estimatedTime <= 0) {
+            clearInterval(interval);
+            setTimeExpired(true);
+            console.log('⏰ Time expired (local countdown), auto-submitting...');
+            handleAutoSubmit();
+            return;
+          }
         }
       } catch (error) {
         console.error('Error updating timer:', error);
-        // Fallback to local countdown
-        setRemainingTime(prev => {
-          const newTime = prev - 1;
-          if (newTime <= 0) {
-            clearInterval(interval);
-            setTimeExpired(true);
-            console.log('⏰ Time expired (error fallback), auto-submitting test...');
-            handleAutoSubmit();
-            return 0;
-          }
-          return newTime;
-        });
+        // Fallback: use local countdown based on last known server time
+        const now = Date.now();
+        const elapsedSinceLastSync = Math.floor((now - lastServerSync) / 1000);
+        const estimatedTime = Math.max(0, lastServerTime - elapsedSinceLastSync);
+        setRemainingTime(estimatedTime);
+        
+        if (estimatedTime <= 0) {
+          clearInterval(interval);
+          setTimeExpired(true);
+          console.log('⏰ Time expired (error fallback), auto-submitting...');
+          handleAutoSubmit();
+          return;
+        }
       }
     }, 1000);
     
@@ -314,8 +373,73 @@ export default function TestTakePage() {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Load existing PDF files for all questions
-  const loadExistingPdfFiles = async (testAttemptId: string, testData: Test) => {
+  // Sync offline answers when coming back online
+  const syncOfflineAnswers = async () => {
+    if (!attemptId) return;
+    
+    try {
+      const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
+      
+      // Get all backup keys for this attempt
+      const backupKeys = Object.keys(localStorage).filter(key => 
+        key.startsWith(`backup_${attemptId}_`)
+      );
+      
+      if (backupKeys.length === 0) {
+        console.log('📤 No offline answers to sync');
+        return;
+      }
+      
+      console.log(`📤 Syncing ${backupKeys.length} offline answers...`);
+      
+      for (const backupKey of backupKeys) {
+        try {
+          const backupData = localStorage.getItem(backupKey);
+          if (!backupData) continue;
+          
+          const answerData = JSON.parse(backupData) as RealtimeAnswer;
+          const questionId = answerData.questionId;
+          
+          // Determine answer value and type
+          let answerValue: any;
+          let questionType: 'mcq' | 'essay';
+          let pdfFiles: PdfAttachment[] = [];
+          
+          if (answerData.selectedOption !== undefined) {
+            answerValue = answerData.selectedOption;
+            questionType = 'mcq';
+          } else {
+            answerValue = answerData.textContent || '';
+            questionType = 'essay';
+            pdfFiles = answerData.pdfFiles || [];
+          }
+          
+          // Sync to realtime database
+          await RealtimeTestService.saveAnswer(
+            attemptId,
+            questionId,
+            answerValue,
+            questionType,
+            answerData.timeSpent || 0,
+            pdfFiles
+          );
+          
+          // Remove backup after successful sync
+          localStorage.removeItem(backupKey);
+          console.log(`✅ Synced offline answer for question: ${questionId}`);
+        } catch (error) {
+          console.error(`❌ Failed to sync answer for key ${backupKey}:`, error);
+        }
+      }
+      
+      console.log('✅ Offline answer sync completed');
+    } catch (error) {
+      console.error('❌ Error syncing offline answers:', error);
+    }
+  };
+
+  // Load existing answers and PDF files for all questions
+  const loadExistingAnswersAndFiles = async (testAttemptId: string, testData: Test) => {
     try {
       if (!student?.id) return;
 
@@ -325,40 +449,64 @@ export default function TestTakePage() {
       const session = await RealtimeTestService.getSession(testAttemptId);
       
       if (!session?.answers) {
-        console.log('📁 No session answers found yet');
+        console.log('📁 No existing answers found');
         return;
       }
       
-      // Extract PDF files from essay answers and update both states
+      console.log('🔄 Loading existing answers from session:', Object.keys(session.answers));
+      
+      // Extract both answers and PDF files from all questions
       const pdfMap: Record<string, PdfAttachment[]> = {};
-      const answersToUpdate: Record<string, RealtimeAnswer> = {};
+      const answersToLoad: Record<string, RealtimeAnswer> = {};
       
       for (const question of testData.questions) {
-        const sessionAnswer = session.answers[question.id];
-        if (question.type === 'essay' && sessionAnswer) {
-          // Update PDF files state
-          if (sessionAnswer.pdfFiles && sessionAnswer.pdfFiles.length > 0) {
-            pdfMap[question.id] = sessionAnswer.pdfFiles;
+        const questionId = question.id;
+        const existingAnswer = session.answers[questionId];
+        
+        if (existingAnswer) {
+          // Always load the answer regardless of question type
+          answersToLoad[questionId] = existingAnswer;
+          
+          // For essay questions, also extract PDF files
+          if (question.type === 'essay' && existingAnswer.pdfFiles) {
+            pdfMap[questionId] = existingAnswer.pdfFiles;
           }
           
-          // Update answers state with the full answer data
-          answersToUpdate[question.id] = sessionAnswer;
+          console.log(`📝 Loaded answer for question ${questionId}:`, {
+            type: question.type,
+            hasAnswer: !!existingAnswer,
+            answerType: question.type === 'mcq' ? 'selectedOption' : 'textContent',
+            answerValue: question.type === 'mcq' ? existingAnswer.selectedOption : (existingAnswer.textContent?.substring(0, 50) + '...'),
+            hasPdfs: question.type === 'essay' ? (existingAnswer.pdfFiles?.length || 0) : 'N/A'
+          });
         }
       }
       
       // Update both states
-      setPdfFiles(pdfMap);
-      if (Object.keys(answersToUpdate).length > 0) {
-        setAnswers(prev => ({
-          ...prev,
-          ...answersToUpdate
-        }));
+      if (Object.keys(answersToLoad).length > 0) {
+        setAnswers(answersToLoad);
+        console.log('✅ Loaded', Object.keys(answersToLoad).length, 'existing answers');
       }
       
-      console.log('📁 Loaded existing PDF files:', pdfMap);
-      console.log('📝 Updated answers state with PDFs:', Object.keys(answersToUpdate));
+      if (Object.keys(pdfMap).length > 0) {
+        setPdfFiles(pdfMap);
+        console.log('📁 Loaded existing PDF files for', Object.keys(pdfMap).length, 'questions');
+      }
+      
+      // Also restore question navigation state from session
+      if (session.currentQuestionIndex !== undefined && session.currentQuestionIndex >= 0) {
+        setCurrentIndex(session.currentQuestionIndex);
+        console.log('🧭 Restored current question index:', session.currentQuestionIndex);
+      }
+      
+      // Restore review mode if it was active
+      if (session.isReviewMode !== undefined) {
+        setReviewMode(session.isReviewMode);
+        console.log('👁️ Restored review mode:', session.isReviewMode);
+      }
+      
     } catch (error) {
-      console.error('Error loading existing PDF files:', error);
+      console.error('Error loading existing answers and files:', error);
     }
   };
 
@@ -515,9 +663,9 @@ export default function TestTakePage() {
           testAvailable = now >= startTime && now <= endTime;
           testDuration = liveTest.duration * 60; // convert to seconds
           
-          // Set remaining time
-          const timeRemaining = Math.max(0, Math.floor((endTime - now) / 1000));
-          setRemainingTime(timeRemaining);
+          // 🔥 DON'T set remaining time here - it will be calculated properly from the attempt
+          // const timeRemaining = Math.max(0, Math.floor((endTime - now) / 1000));
+          // setRemainingTime(timeRemaining);
         } else {
           const flexTest = testData as FlexibleTest;
           const startTime = getTimestamp(flexTest.availableFrom);
@@ -540,8 +688,8 @@ export default function TestTakePage() {
             testAvailable
           });
           
-          // Set remaining time - for flexible tests, use the full duration
-          setRemainingTime(flexTest.duration * 60); // convert to seconds
+          // 🔥 DON'T set remaining time here - it will be set when we load the attempt
+          // setRemainingTime(flexTest.duration * 60); // convert to seconds
         }
         
         if (!testAvailable) {
@@ -569,8 +717,8 @@ export default function TestTakePage() {
             if (startDate.getFullYear() > currentYear + 1) {
               console.warn('⚠️ DEVELOPMENT OVERRIDE: Test appears to have far future dates, allowing access for testing');
               testAvailable = true;
-              // Set a reasonable remaining time for testing
-              setRemainingTime(flexTest.duration * 60);
+              // 🔥 DON'T set remaining time here either - let it be handled by attempt management
+              // setRemainingTime(flexTest.duration * 60);
             }
           }
           
@@ -599,24 +747,25 @@ export default function TestTakePage() {
           
           setAttemptId(newAttemptId);
           
-          // Ensure realtime session is initialized for resumption
-          const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
-          await RealtimeTestService.startTestSession(
-            newAttemptId,
-            testId,
-            student.id,
-            student.name || 'Anonymous Student',
-            classId,
-            testDuration / 60 // convert back to minutes
-          );
+          // 🔥 CRITICAL: Get the actual remaining time from attempt management FIRST
+          console.log('⏰ Getting actual remaining time from attempt management...');
+          const timeCalc = await AttemptManagementService.updateAttemptTime(newAttemptId);
           
-          // Now check if the attempt has expired during disconnection
-          const isStillActive = await checkAttemptStatus(newAttemptId);
-          if (!isStillActive) {
-            console.log('⏰ Attempt has expired, redirecting to results...');
+          if (timeCalc.isExpired) {
+            console.log('⏰ Attempt has expired, auto-submitting...');
+            setTimeExpired(true);
+            await handleAutoSubmit();
             setLoading(false);
-            return; // checkAttemptStatus will handle auto-submit and redirect
+            return;
           }
+          
+          // Set the ACTUAL remaining time, not the full test duration
+          setRemainingTime(timeCalc.timeRemaining);
+          console.log('✅ Restored actual remaining time:', timeCalc.timeRemaining, 'seconds');
+          
+          // 🔥 CRITICAL: For resumed attempts, do NOT restart the session
+          // This prevents clearing existing answers and resetting time
+          console.log('✅ Resumed attempt - skipping session restart to preserve data');
           
           // Attempt is still active, continue with current time from attempt management
           console.log('✅ Attempt is still active, continuing...');
@@ -644,6 +793,10 @@ export default function TestTakePage() {
           
           setAttemptId(newAttemptId);
           
+          // 🔥 CRITICAL: For new attempts, set the correct initial remaining time
+          setRemainingTime(testDuration); // This should be the full test duration for new attempts
+          console.log('✅ New attempt created with initial time:', testDuration, 'seconds');
+          
           // Start test session in Realtime DB for new attempt
           const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
           
@@ -659,8 +812,31 @@ export default function TestTakePage() {
         
         console.log('✅ Test session started successfully');
         
-        // Load existing PDF files for resumed attempts
-        await loadExistingPdfFiles(newAttemptId, testData);
+        // 🔥 CRITICAL: For BOTH new and resumed attempts, load existing answers
+        await loadExistingAnswersAndFiles(newAttemptId, testData);
+        
+        // 🔥 CRITICAL: Only get final time calculation for NEW attempts
+        // For resumed attempts, we already have the correct time
+        if (!activeAttempt) {
+          // This is a NEW attempt - get the initial time calculation
+          console.log('⏰ Getting initial time calculation for new attempt...');
+          const finalTimeCalc = await AttemptManagementService.updateAttemptTime(newAttemptId);
+          
+          if (finalTimeCalc.isExpired) {
+            console.log('⏰ Attempt expired during setup, auto-submitting...');
+            setTimeExpired(true);
+            await handleAutoSubmit();
+            setLoading(false);
+            return;
+          }
+          
+          // Set the time for new attempts
+          setRemainingTime(finalTimeCalc.timeRemaining);
+          console.log('✅ Initial time set for new attempt:', finalTimeCalc.timeRemaining, 'seconds');
+        } else {
+          // This is a RESUMED attempt - we already have the correct time, don't override it
+          console.log('✅ Resumed attempt - keeping existing time:', remainingTime, 'seconds');
+        }
         
         setLoading(false);
       } catch (error) {
@@ -733,7 +909,7 @@ export default function TestTakePage() {
     };
   }, [currentIndex, currentQuestion]);
 
-  // Handle saving answer
+  // Handle saving answer with offline backup
   const saveAnswer = useCallback(async (answer: any) => {
     if (!currentQuestion || !attemptId) return;
     
@@ -755,20 +931,7 @@ export default function TestTakePage() {
         pdfFiles = answer.pdfFiles || [];
       }
       
-      // Import service
-      const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
-      
-      // Save to Realtime DB - extend to support PDF files
-      await RealtimeTestService.saveAnswer(
-        attemptId,
-        questionId,
-        cleanAnswer,
-        currentQuestion.type,
-        timeSpent,
-        pdfFiles // Pass PDF files as additional parameter
-      );
-      
-      // Update local state
+      // Update local state immediately (optimistic update)
       const now = Date.now();
       const currentAnswer = answers[questionId];
       
@@ -802,17 +965,50 @@ export default function TestTakePage() {
         [questionId]: updatedAnswer
       }));
       
-      setSavedState('saved');
+      // Save to localStorage as backup
+      const backupKey = `backup_${attemptId}_${questionId}`;
+      localStorage.setItem(backupKey, JSON.stringify(updatedAnswer));
       
-      // Clear saved state after a delay
-      setTimeout(() => {
-        setSavedState(null);
-      }, 2000);
+      if (isOnline) {
+        try {
+          // Import service
+          const { RealtimeTestService } = await import('@/apiservices/realtimeTestService');
+          
+          // Save to Realtime DB - extend to support PDF files
+          await RealtimeTestService.saveAnswer(
+            attemptId,
+            questionId,
+            cleanAnswer,
+            currentQuestion.type,
+            timeSpent,
+            pdfFiles // Pass PDF files as additional parameter
+          );
+          
+          // Clear backup on successful save
+          localStorage.removeItem(backupKey);
+          setSavedState('saved');
+          
+          // Clear saved state after a delay
+          setTimeout(() => {
+            setSavedState(null);
+          }, 2000);
+        } catch (error) {
+          console.error('Error saving answer to realtime DB:', error);
+          setSavedState('error');
+          // Keep the localStorage backup
+          setTimeout(() => setSavedState(null), 3000);
+        }
+      } else {
+        console.log('💾 Saved answer offline for question:', questionId);
+        setSavedState('saved');
+        setTimeout(() => setSavedState(null), 2000);
+      }
     } catch (error) {
       console.error('Error saving answer:', error);
       setSavedState('error');
+      setTimeout(() => setSavedState(null), 3000);
     }
-  }, [attemptId, currentQuestion, answers]);
+  }, [attemptId, currentQuestion, answers, isOnline]);
 
   // Handle option selection for MCQ
   const handleOptionSelect = (optionIndex: number) => {
