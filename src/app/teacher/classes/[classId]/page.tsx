@@ -33,6 +33,7 @@ import { getEnrollmentsByClass } from '@/services/studentEnrollmentService';
 import { StudentEnrollment } from '@/models/studentEnrollmentSchema';
 import { 
   getStudyMaterialsByClassGroupedByWeek,
+  getStudyMaterialsByClassGroupedByLesson,
   convertToDisplayData,
   markMaterialCompleted,
   unmarkMaterialCompleted,
@@ -40,6 +41,7 @@ import {
   incrementDownloadCount
 } from '@/apiservices/studyMaterialFirestoreService';
 import { StudyMaterialDisplayData } from '@/models/studyMaterialSchema';
+import StudyMaterialUploadModal from '@/components/modals/StudyMaterialUploadModal';
 
 interface TabData {
   id: string;
@@ -279,7 +281,33 @@ function StudyMaterialsTab({ classId }: { classId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
-  const [expandedWeeks, setExpandedWeeks] = useState<Set<number>>(new Set([1])); // Start with week 1 expanded
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedLessonId, setSelectedLessonId] = useState<string | undefined>(undefined);
+  const [classData, setClassData] = useState<ClassDocument | null>(null);
+  const [lessons, setLessons] = useState<any[]>([]); // Store lessons for badge display
+
+  // Load class data and lessons
+  useEffect(() => {
+    const loadClassData = async () => {
+      try {
+        const data = await ClassFirestoreService.getClassById(classId);
+        setClassData(data);
+        
+        // Load lessons for badge display
+        if (data?.subjectId) {
+          const { LessonFirestoreService } = await import('@/apiservices/lessonFirestoreService');
+          const lessonData = await LessonFirestoreService.getLessonsBySubject(data.subjectId);
+          setLessons(lessonData);
+        }
+      } catch (err) {
+        console.error('Error loading class data:', err);
+      }
+    };
+
+    if (classId) {
+      loadClassData();
+    }
+  }, [classId]);
 
   // Load study materials
   useEffect(() => {
@@ -287,8 +315,16 @@ function StudyMaterialsTab({ classId }: { classId: string }) {
       try {
         setLoading(true);
         const currentYear = new Date().getFullYear();
+        // Get materials in chronological order instead of grouped by lesson
         const materialsData = await getStudyMaterialsByClassGroupedByWeek(classId, currentYear);
-        setStudyMaterials(materialsData);
+        // Flatten and sort by upload date
+        const allMaterials = materialsData.flatMap(week => week.materials)
+          .sort((a, b) => {
+            const dateA = a.uploadedAt instanceof Date ? a.uploadedAt : a.uploadedAt.toDate();
+            const dateB = b.uploadedAt instanceof Date ? b.uploadedAt : b.uploadedAt.toDate();
+            return dateB.getTime() - dateA.getTime();
+          });
+        setStudyMaterials(allMaterials);
       } catch (err) {
         console.error('Error loading study materials:', err);
         setError('Failed to load study materials');
@@ -302,14 +338,39 @@ function StudyMaterialsTab({ classId }: { classId: string }) {
     }
   }, [classId]);
 
-  const toggleWeekExpansion = (week: number) => {
-    const newExpanded = new Set(expandedWeeks);
-    if (newExpanded.has(week)) {
-      newExpanded.delete(week);
-    } else {
-      newExpanded.add(week);
+  // Refresh materials after upload
+  const refreshMaterials = async () => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const materialsData = await getStudyMaterialsByClassGroupedByWeek(classId, currentYear);
+      // Flatten and sort by upload date
+      const allMaterials = materialsData.flatMap(week => week.materials)
+        .sort((a, b) => {
+          const dateA = a.uploadedAt instanceof Date ? a.uploadedAt : a.uploadedAt.toDate();
+          const dateB = b.uploadedAt instanceof Date ? b.uploadedAt : b.uploadedAt.toDate();
+          return dateB.getTime() - dateA.getTime();
+        });
+      setStudyMaterials(allMaterials);
+    } catch (err) {
+      console.error('Error refreshing study materials:', err);
     }
-    setExpandedWeeks(newExpanded);
+  };
+
+  const handleUploadSuccess = () => {
+    refreshMaterials();
+    setShowUploadModal(false);
+    setSelectedLessonId(undefined);
+  };
+
+  const openUploadModal = (lessonId?: string) => {
+    setSelectedLessonId(lessonId);
+    setShowUploadModal(true);
+  };
+
+  const getLessonBadge = (lessonId?: string) => {
+    if (!lessonId) return 'General';
+    const lesson = lessons.find(l => l.id === lessonId);
+    return lesson ? lesson.name : 'Unknown Lesson';
   };
 
   const getFileIcon = (fileType: string) => {
@@ -354,40 +415,44 @@ function StudyMaterialsTab({ classId }: { classId: string }) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          Study Materials Timeline
-        </h3>
-        <div className="flex items-center space-x-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search materials..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-            />
+    <>
+      <div className="space-y-6">
+        {/* Header with Actions */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Study Materials
+          </h3>
+          <div className="flex items-center space-x-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search materials..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            >
+              <option value="all">All Types</option>
+              <option value="pdf">PDFs</option>
+              <option value="video">Videos</option>
+              <option value="link">Links</option>
+              <option value="required">Required Only</option>
+            </select>
+            <Button 
+              className="flex items-center space-x-2"
+              onClick={() => openUploadModal()}
+            >
+              <Upload className="w-4 h-4" />
+              <span>Upload Material</span>
+            </Button>
           </div>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-          >
-            <option value="all">All Types</option>
-            <option value="pdf">PDFs</option>
-            <option value="video">Videos</option>
-            <option value="link">Links</option>
-            <option value="required">Required Only</option>
-          </select>
-          <Button className="flex items-center space-x-2">
-            <Upload className="w-4 h-4" />
-            <span>Upload Material</span>
-          </Button>
         </div>
-      </div>
 
       {/* Timeline View */}
       {studyMaterials.length === 0 ? (
@@ -397,133 +462,105 @@ function StudyMaterialsTab({ classId }: { classId: string }) {
           <p className="text-gray-500 dark:text-gray-400 mb-6">
             Get started by uploading your first study material.
           </p>
-          <Button>
+          <Button onClick={() => openUploadModal()}>
             <Upload className="w-4 h-4 mr-2" />
             Upload Material
           </Button>
         </div>
       ) : (
-        <div className="space-y-6">
-          {studyMaterials.map((weekData) => (
-            <div key={weekData.week} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-              {/* Week Header */}
-              <div 
-                className="bg-gray-50 dark:bg-gray-800 p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                onClick={() => toggleWeekExpansion(weekData.week)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium">
-                      {weekData.week}
+        <div className="space-y-4">
+          {studyMaterials.map((material: any, index: number) => (
+            <div key={material.id || index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-6 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start space-x-4 flex-1">
+                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    {getFileIcon(material.fileType || 'other')}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <h5 className="text-lg font-medium text-gray-900 dark:text-white truncate">
+                        {material.title || `Material ${index + 1}`}
+                      </h5>
+                      {material.lessonId && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+                          📚 {getLessonBadge(material.lessonId)}
+                        </span>
+                      )}
+                      {!material.lessonId && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                          📂 General
+                        </span>
+                      )}
                     </div>
-                    <div>
-                      <h4 className="font-medium text-gray-900 dark:text-white">
-                        {weekData.weekTitle}
-                      </h4>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {weekData.materials.length} materials • {weekData.stats.requiredMaterials} required
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getFileTypeColor(material.fileType || 'other')}`}>
+                        {(material.fileType || 'FILE').toUpperCase()}
+                      </span>
+                      {material.isRequired && (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300">
+                          Required
+                        </span>
+                      )}
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        {material.formattedFileSize || '2.3 MB'} • {material.formattedDuration || 'No duration'}
+                      </span>
+                    </div>
+                    {material.description && (
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2">
+                        {material.description}
                       </p>
+                    )}
+                    <div className="flex items-center space-x-6 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{material.relativeUploadTime || '2 days ago'}</span>
+                      <span>{material.downloadCount || 0} downloads</span>
+                      <div className="flex items-center space-x-1">
+                        <CheckCircle className="w-3 h-3 text-green-500" />
+                        <span>{material.completedBy?.length || 0} completed</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                      {weekData.stats.averageCompletion}% completion
-                    </span>
-                    <div className="w-16 h-2 bg-gray-200 dark:bg-gray-600 rounded-full">
-                      <div 
-                        className="h-full bg-blue-500 rounded-full transition-all"
-                        style={{ width: `${weekData.stats.averageCompletion}%` }}
-                      />
-                    </div>
-                    <div className="transform transition-transform">
-                      {expandedWeeks.has(weekData.week) ? '▼' : '▶'}
-                    </div>
-                  </div>
+                </div>
+                <div className="flex space-x-2 flex-shrink-0">
+                  {material.fileType === 'link' ? (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => window.open(material.externalUrl || material.fileUrl, '_blank')}
+                      className="flex items-center space-x-1"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span className="hidden sm:inline">Open Link</span>
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="outline" size="sm">
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                      <Button variant="outline" size="sm">
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="outline" size="sm">
+                    <Edit className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
-
-              {/* Week Materials */}
-              {expandedWeeks.has(weekData.week) && (
-                <div className="p-4 space-y-4">
-                  {weekData.materials.length === 0 ? (
-                    <div className="text-center py-8">
-                      <BookOpen className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-                      <p className="text-gray-500 dark:text-gray-400">No materials for this week</p>
-                      <Button variant="outline" size="sm" className="mt-2">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Material
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {weekData.materials.map((material: any, index: number) => (
-                        <div key={material.id || index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
-                          <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-start space-x-3 flex-1">
-                              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                                {getFileIcon(material.fileType || 'other')}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h5 className="font-medium text-gray-900 dark:text-white truncate">
-                                  {material.title || `Material ${index + 1}`}
-                                </h5>
-                                <div className="flex items-center space-x-2 mt-1">
-                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getFileTypeColor(material.fileType || 'other')}`}>
-                                    {(material.fileType || 'FILE').toUpperCase()}
-                                  </span>
-                                  {material.isRequired && (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-300">
-                                      Required
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                  {material.formattedFileSize || '2.3 MB'} • {material.formattedDuration || 'No duration'}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex space-x-1 flex-shrink-0">
-                              <Button variant="outline" size="sm">
-                                <Eye className="w-4 h-4" />
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                <Download className="w-4 h-4" />
-                              </Button>
-                              <Button variant="outline" size="sm">
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </div>
-                          
-                          {material.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-3 line-clamp-2">
-                              {material.description}
-                            </p>
-                          )}
-                          
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
-                              <span>{material.relativeUploadTime || '2 days ago'}</span>
-                              <span>{material.downloadCount || 156} downloads</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                              <span className="text-sm text-gray-600 dark:text-gray-300">
-                                {material.completedBy?.length || 0} completed
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ))}
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Upload Modal */}
+      <StudyMaterialUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onSuccess={handleUploadSuccess}
+        classData={classData || undefined}
+        preSelectedLessonId={selectedLessonId}
+      />
+    </>
   );
 }
 

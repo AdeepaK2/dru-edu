@@ -10,6 +10,7 @@ export const studyMaterialSchema = z.object({
   classId: z.string().min(1, 'Class ID is required'),
   subjectId: z.string().min(1, 'Subject ID is required'), // Added subject linking
   lessonId: z.string().optional(), // Optional - can be linked to a specific lesson or be general
+  lessonName: z.string().optional(), // Lesson name for display purposes
   teacherId: z.string().min(1, 'Teacher ID is required'),
   week: z.number().min(1, 'Week must be at least 1'),
   weekTitle: z.string().optional(), // Optional title for the week
