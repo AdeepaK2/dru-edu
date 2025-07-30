@@ -116,6 +116,8 @@ export class AttemptManagementService {
       
       // Calculate time allowed
       const timeAllowed = this.getTestDuration(test) * 60; // Convert to seconds
+      const startTime = Timestamp.now();
+      const endTime = new Timestamp(startTime.seconds + timeAllowed, startTime.nanoseconds);
 
       // Create attempt record with validated data
       const attempt: TestAttempt = {
@@ -130,8 +132,9 @@ export class AttemptManagementService {
         status: 'not_started',
         
         // Timing
-        startedAt: Timestamp.now(),
-        lastActiveAt: Timestamp.now(),
+        startedAt: startTime,
+        endTime: endTime,
+        lastActiveAt: startTime,
         
         // Time management
         totalTimeAllowed: timeAllowed,

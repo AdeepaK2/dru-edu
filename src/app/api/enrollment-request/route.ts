@@ -125,7 +125,7 @@ export async function PUT(request: NextRequest) {
     const validatedUpdateData = enrollmentRequestUpdateSchema.parse(updateData);
     
     // Add timestamp for processing
-    const updatePayload = {
+    const updatePayload: any = {
       ...validatedUpdateData,
       updatedAt: Timestamp.now(),
     };

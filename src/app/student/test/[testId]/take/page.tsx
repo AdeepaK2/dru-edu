@@ -42,7 +42,7 @@ export default function TestTakePage() {
   const [timeExpired, setTimeExpired] = useState(false);
   
   // Connection state
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(true); // Default to true for SSR
   const [wasOffline, setWasOffline] = useState(false);
   const [offlineTime, setOfflineTime] = useState(0);
   
@@ -1730,8 +1730,8 @@ export default function TestTakePage() {
               
               // Merge and deduplicate based on fileUrl
               const allPdfFiles = [...pdfFilesFromState, ...pdfFilesFromAnswers];
-              const uniquePdfFiles = allPdfFiles.filter((pdf, index, self) => 
-                index === self.findIndex(p => p.fileUrl === pdf.fileUrl)
+              const uniquePdfFiles = allPdfFiles.filter((pdf, index, array) => 
+                index === array.findIndex(p => p.fileUrl === pdf.fileUrl)
               );
               
               console.log('🔍 PDF Upload Component Debug:', {
