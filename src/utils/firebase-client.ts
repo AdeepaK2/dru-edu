@@ -3,7 +3,9 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { MELBOURNE_TIMEZONE } from './timezone';
+import { getDatabase } from 'firebase/database';
+
+const MELBOURNE_TIMEZONE = 'Australia/Melbourne';
 
 // Firebase configuration using environment variables
 const firebaseConfig = {
@@ -24,8 +26,9 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
+const database = getDatabase(app); // Realtime Database
 
 // Initialize Analytics only on the client side
 const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 
-export { app, auth, firestore, storage, analytics };
+export { app, auth, firestore, storage, database, analytics };

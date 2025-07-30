@@ -42,7 +42,6 @@ export async function POST(req: NextRequest) {
     await Promise.all([
       // Set custom claims
       firebaseAdmin.authentication.setCustomClaims(userRecord.uid, { admin: true }),
-      
       // Store admin data in Firestore
       firebaseAdmin.firestore.setDoc('admins', userRecord.uid, {
         name,
@@ -127,7 +126,7 @@ export async function GET(req: NextRequest) {
     if (adminIds.length > 0) {
       try {
         // Firebase Auth has getUsers() for batch operations
-        const result = await firebaseAdmin.auth.getUsers(adminIds.map(id => ({ uid: id })));
+        const result = await firebaseAdmin.authentication.getUsers(adminIds.map(id => ({ uid: id })));
         result.users.forEach(user => {
           authUsers[user.uid] = user;
         });
@@ -230,7 +229,7 @@ export async function PATCH(req: NextRequest) {
     
     // Update in Firestore
     const firestoreUpdateData: Partial<Omit<AdminDocument, 'id'>> = {
-      updatedAt: Timestamp.now()
+      updatedAt: admin.firestore.Timestamp.now() as any
     };
     
     if (name) firestoreUpdateData.name = name;

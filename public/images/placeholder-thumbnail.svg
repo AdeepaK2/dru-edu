@@ -1,0 +1,13 @@
+<!-- Placeholder SVG for video thumbnails -->
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180">
+  <rect width="320" height="180" fill="#f0f0f0"/>
+  <g transform="translate(160,90)">
+    <g fill="#cccccc">
+      <circle cx="0" cy="0" r="40" />
+      <polygon points="15,-15 15,15 -15,0" transform="translate(5)" fill="#f0f0f0"/>
+    </g>
+    <text x="0" y="70" font-family="Arial" font-size="14" text-anchor="middle" fill="#888888">
+      No Thumbnail Available
+    </text>
+  </g>
+</svg>

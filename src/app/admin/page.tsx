@@ -1,160 +1,412 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { auth } from '@/utils/firebase-client';
-import { onAuthStateChanged } from 'firebase/auth';
+import React, { useEffect, useState } from 'react';
+import { 
+  Users, 
+  GraduationCap, 
+  Building2, 
+  Video, 
+  FileQuestion, 
+  Activity,
+  Zap,
+  UserPlus,
+  PlusCircle,
+  Upload,
+  Shield,
+  RefreshCw
+} from 'lucide-react';
+import { NavigationLoader } from '@/utils/performance';
+import { useNavigationLoading } from '@/hooks/useNavigationLoading';
+import AdminModal from '@/components/modals/AdminModal';
+import { AdminData } from '@/models/adminSchema';
+import { CenterFirestoreService } from '@/apiservices/centerFirestoreService';
+import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
+import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
+import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
+import { StudentFirestoreService } from '@/apiservices/studentFirestoreService';
+import { VideoFirestoreService } from '@/apiservices/videoFirestoreService';
 
 export default function AdminDashboard() {
-  const [loading, setLoading] = useState(true);
-  const [adminName, setAdminName] = useState('');
-  const router = useRouter();
+  const { setLoading: setNavLoading } = useNavigationLoading();
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [centersInitialized, setCentersInitialized] = useState(false);
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    totalTeachers: 0,
+    totalClasses: 0,
+    totalVideos: 0,
+    totalSubjects: 0,
+    activeClasses: 0,
+    totalQuestions: 0,
+    pendingTransactions: 0,
+    systemStatus: 'Loading...'
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
 
+  // Fetch dashboard statistics
+  const fetchDashboardStats = async () => {
+    try {
+      setStatsLoading(true);
+      
+      // Fetch data from all services in parallel
+      const [
+        studentsData,
+        teachersData,
+        classesData,
+        videosData,
+        subjectsData
+      ] = await Promise.all([
+        StudentFirestoreService.getAllStudents().catch(() => []),
+        TeacherFirestoreService.getAllTeachers().catch(() => []),
+        ClassFirestoreService.getAllClasses().catch(() => []),
+        VideoFirestoreService.getAllVideos().catch(() => []),
+        SubjectFirestoreService.getAllSubjects().catch(() => [])
+      ]);
+
+      // Calculate statistics
+      const activeClasses = classesData.filter(cls => cls.status === 'Active').length;
+      const activeSubjects = subjectsData.filter(sub => sub.isActive).length;
+      
+      setStats({
+        totalStudents: studentsData.length,
+        totalTeachers: teachersData.length,
+        totalClasses: classesData.length,
+        totalVideos: videosData.length,
+        totalSubjects: subjectsData.length,
+        activeClasses: activeClasses,
+        totalQuestions: 0, // Will need QuestionBankFirestoreService for this
+        pendingTransactions: 0, // Will need TransactionFirestoreService for this
+        systemStatus: 'Healthy'
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+      setStats(prev => ({
+        ...prev,
+        systemStatus: 'Error'
+      }));
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // Clear loading state when dashboard loads and fetch stats
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        // User is signed in
-        try {
-          // Check if user has admin claim
-          const idTokenResult = await user.getIdTokenResult();
-          
-          if (!idTokenResult.claims.admin) {
-            // Not an admin, redirect to login
-            await auth.signOut();
-            router.push('/admin/login');
-            return;
-          }
-          
-          // User is an admin
-          setAdminName(user.displayName || user.email || 'Admin');
-          setLoading(false);
-        } catch (error) {
-          console.error("Error verifying admin status:", error);
-          router.push('/admin/login');
-        }
-      } else {
-        // No user is signed in, redirect to login
-        router.push('/admin/login');
-      }
-    });
+    setNavLoading(false);
+    fetchDashboardStats();
+  }, [setNavLoading]);
 
-    // Cleanup subscription on unmount
-    return () => unsubscribe();
-  }, [router]);
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 to-white dark:from-gray-900 dark:to-gray-800">
-        <div className="text-center">
-          <div className="w-16 h-16 border-t-4 border-primary-600 border-solid rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-secondary-600 dark:text-secondary-300 font-medium">Loading...</p>
+  // Handle admin creation
+  const handleAdminCreate = async (adminData: AdminData) => {
+    setAdminLoading(true);
+    
+    try {
+      const response = await fetch('/api/admin-side/admin-manage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(adminData),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create admin');
+      }
+
+      const result = await response.json();
+      console.log('Admin created successfully:', result);
+      alert(`Admin "${adminData.name}" created successfully!`);
+      setShowAdminModal(false);
+    } catch (error) {
+      console.error('Error creating admin:', error);
+      alert(`Failed to create admin: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  // Initialize centers in database
+  const initializeCenters = async () => {
+    try {
+      // Check if centers already exist
+      const existingCenters = await CenterFirestoreService.getAllCenters();
+      if (existingCenters.length > 0) {
+        alert('Centers already exist in database');
+        setCentersInitialized(true);
+        return;
+      }
+
+      // Add the two centers to Firestore
+      const centersData = [
+        { center: 1, location: 'Glen Waverley' },
+        { center: 2, location: 'Cranbourne' }
+      ];
+
+      // Note: You'll need to add a createCenter method to CenterFirestoreService
+      // For now, let's add them directly to Firestore
+      const { collection, addDoc } = await import('firebase/firestore');
+      const { firestore } = await import('@/utils/firebase-client');
+      
+      for (const centerData of centersData) {
+        await addDoc(collection(firestore, 'center'), centerData);
+      }
+
+      alert('Centers initialized successfully!');
+      setCentersInitialized(true);
+    } catch (error) {
+      console.error('Error initializing centers:', error);
+      alert('Failed to initialize centers: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const recentActivities = [
+    { id: 1, action: 'New student enrolled', user: 'John Doe', time: '2 minutes ago' },
+    { id: 2, action: 'Video uploaded', user: 'Prof. Smith', time: '15 minutes ago' },
+    { id: 3, action: 'Payment received', user: 'Jane Wilson', time: '1 hour ago' },
+    { id: 4, action: 'Class created', user: 'Dr. Johnson', time: '2 hours ago' },
+    { id: 5, action: 'Question added', user: 'Admin', time: '3 hours ago' }
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome Header */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Dashboard Overview
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400">
+              Welcome back! Here's what's happening with your platform today.
+            </p>
+          </div>
+          <button
+            onClick={fetchDashboardStats}
+            disabled={statsLoading}
+            className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${statsLoading ? 'animate-spin' : ''}`} />
+            Refresh Stats
+          </button>
         </div>
       </div>
-    );
-  }
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-white dark:from-gray-900 dark:to-gray-800 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-medium p-8 mb-8">
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center">
-            <div className="mb-4 md:mb-0">
-              <h1 className="text-3xl font-heading font-bold text-secondary-800 dark:text-white mb-2">
-                Welcome, {adminName}!
-              </h1>
-              <p className="text-secondary-600 dark:text-secondary-300">
-                Manage your educational content, users, and site settings from here.
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">        {/* Students Stats */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-blue-100 dark:bg-blue-900 rounded-lg">
+              <Users className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Students</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalStudents.toLocaleString()}
               </p>
             </div>
-            
-            <button 
-              onClick={() => auth.signOut().then(() => router.push('/admin/login'))}
-              className="px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all flex items-center justify-center shadow-soft"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h12a1 1 0 001-1V7.414a1 1 0 00-.293-.707L11.414 3.293A1 1 0 0010.707 3H3zm8.293 1.293L13 5.586V11h-2v2h2v2H7v-2h2v-2H7V3h4.293z" clipRule="evenodd" />
-              </svg>
-              Sign Out
-            </button>
           </div>
         </div>
-          {/* Dashboard Content */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {/* Stats Card */}
-          <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-xl shadow-soft hover:shadow-medium transition-all">
-            <div className="flex items-center mb-6">
-              <div className="p-3 bg-primary-100 dark:bg-primary-900 rounded-lg mr-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary-600 dark:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h2 className="font-heading text-xl font-semibold text-secondary-800 dark:text-white">Statistics</h2>
+
+        {/* Teachers Stats */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-green-100 dark:bg-green-900 rounded-lg">
+              <GraduationCap className="w-6 h-6 text-green-600 dark:text-green-400" />
             </div>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-secondary-600 dark:text-secondary-300">Total Students</span>
-                <span className="text-xl font-medium text-secondary-800 dark:text-white">0</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-secondary-600 dark:text-secondary-300">Total Courses</span>
-                <span className="text-xl font-medium text-secondary-800 dark:text-white">0</span>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                <span className="text-secondary-600 dark:text-secondary-300">Total Lessons</span>
-                <span className="text-xl font-medium text-secondary-800 dark:text-white">0</span>
-              </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Teachers</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalTeachers}
+              </p>
             </div>
           </div>
-          
-          {/* Quick Actions Card */}
-          <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-xl shadow-soft hover:shadow-medium transition-all">
-            <div className="flex items-center mb-6">
-              <div className="p-3 bg-accent-100 dark:bg-accent-900 rounded-lg mr-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-accent-600 dark:text-accent-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-              </div>
-              <h2 className="font-heading text-xl font-semibold text-secondary-800 dark:text-white">Quick Actions</h2>
+        </div>
+
+        {/* Classes Stats */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-purple-100 dark:bg-purple-900 rounded-lg">
+              <Building2 className="w-6 h-6 text-purple-600 dark:text-purple-400" />
             </div>
-            <div className="space-y-3">
-              <button className="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-all shadow-soft flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                Create New Course
-              </button>
-              <button className="w-full py-3 bg-accent-600 hover:bg-accent-700 text-white rounded-lg transition-all shadow-soft flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
-                Add New Lesson
-              </button>
-              <button className="w-full py-3 bg-secondary-600 hover:bg-secondary-700 text-white rounded-lg transition-all shadow-soft flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-                Manage Users
-              </button>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Classes</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.activeClasses}
+              </p>
             </div>
           </div>
-          
-          {/* Recent Activity Card */}
-          <div className="bg-white dark:bg-gray-800 p-6 md:p-8 rounded-xl shadow-soft hover:shadow-medium transition-all">
-            <div className="flex items-center mb-6">
-              <div className="p-3 bg-secondary-100 dark:bg-secondary-700 rounded-lg mr-4">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-secondary-600 dark:text-secondary-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h2 className="font-heading text-xl font-semibold text-secondary-800 dark:text-white">Recent Activity</h2>
+        </div>
+
+        {/* Videos Stats */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-red-100 dark:bg-red-900 rounded-lg">
+              <Video className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
-            <div className="space-y-4">
-              <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <p className="text-secondary-600 dark:text-secondary-300">No recent activity yet</p>
-                <p className="text-xs text-secondary-500 dark:text-secondary-400 mt-2">Your recent actions will appear here</p>
-              </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Videos</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalVideos}
+              </p>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Second Row Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">        {/* Subjects */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+              <FileQuestion className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Subjects</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalSubjects}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Classes */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className="p-3 bg-indigo-100 dark:bg-indigo-900 rounded-lg">
+              <Building2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Classes</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {statsLoading ? 'Loading...' : stats.totalClasses}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* System Status */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center">
+            <div className={`p-3 rounded-lg ${
+              stats.systemStatus === 'Healthy' 
+                ? 'bg-green-100 dark:bg-green-900' 
+                : stats.systemStatus === 'Error' 
+                ? 'bg-red-100 dark:bg-red-900' 
+                : 'bg-gray-100 dark:bg-gray-900'
+            }`}>
+              <Activity className={`w-6 h-6 ${
+                stats.systemStatus === 'Healthy' 
+                  ? 'text-green-600 dark:text-green-400' 
+                  : stats.systemStatus === 'Error' 
+                  ? 'text-red-600 dark:text-red-400' 
+                  : 'text-gray-600 dark:text-gray-400'
+              }`} />
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">System Status</p>
+              <p className={`text-2xl font-bold ${
+                stats.systemStatus === 'Healthy' 
+                  ? 'text-green-600 dark:text-green-400' 
+                  : stats.systemStatus === 'Error' 
+                  ? 'text-red-600 dark:text-red-400' 
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}>
+                {stats.systemStatus}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Activity and Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Activity */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Recent Activity</h2>
+          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              {recentActivities.map((activity) => (
+                <div key={activity.id} className="flex items-center space-x-3">                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+                      <Zap className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      {activity.action}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      by {activity.user} • {activity.time}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Quick Actions</h2>
+          </div>
+          <div className="p-6">
+            <div className="space-y-3">
+              <button 
+                onClick={() => setShowAdminModal(true)}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
+              >
+                <Shield className="w-5 h-5 mr-2" />
+                Add New Admin
+              </button>
+              <button className="w-full bg-primary-600 hover:bg-primary-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
+                <UserPlus className="w-5 h-5 mr-2" />
+                Add New Student
+              </button>              <button className="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
+                <GraduationCap className="w-5 h-5 mr-2" />
+                Add New Teacher
+              </button>              <button className="w-full bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
+                <Building2 className="w-5 h-5 mr-2" />
+                Create New Class
+              </button>              <button className="w-full bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
+                <Upload className="w-5 h-5 mr-2" />
+                Upload Video
+              </button>              <button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center">
+                <FileQuestion className="w-5 h-5 mr-2" />
+                Add Question
+              </button>
+              
+              <button 
+                onClick={initializeCenters}
+                disabled={centersInitialized}
+                className={`w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center ${
+                  centersInitialized 
+                    ? 'bg-gray-400 cursor-not-allowed text-gray-200' 
+                    : 'bg-teal-600 hover:bg-teal-700 text-white'
+                }`}
+              >
+                <Building2 className="w-5 h-5 mr-2" />
+                {centersInitialized ? 'Centers Initialized' : 'Initialize Centers'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Admin Creation Modal */}
+      {showAdminModal && (
+        <AdminModal
+          isOpen={showAdminModal}
+          onClose={() => setShowAdminModal(false)}
+          onSubmit={handleAdminCreate}
+          loading={adminLoading}
+          title="Add New Admin"
+          submitButtonText="Create Admin"
+        />
+      )}
     </div>
   );
 }

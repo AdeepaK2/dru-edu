@@ -21,6 +21,10 @@ export const cacheUtils = {
     });
   },
   
+  delete: (key: string) => {
+    cache.delete(key);
+  },
+  
   invalidate: (prefix: string) => {
     for (const key of cache.keys()) {
       if (key.startsWith(prefix)) {

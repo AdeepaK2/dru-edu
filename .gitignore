@@ -4,6 +4,7 @@ service-account.json
 *.key
 *.p12
 *credentials*
+dru-edu-firebase-adminsdk-fbsvc-ea48ac613a.json
 .env
 .env.local
 .env.development.local
