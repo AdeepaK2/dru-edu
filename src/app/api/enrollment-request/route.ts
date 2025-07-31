@@ -1,17 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  doc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  orderBy, 
-  where,
-  Timestamp 
-} from 'firebase/firestore';
-import { firestore } from '@/utils/firebase-client';
+import firebaseAdmin from '@/utils/firebase-server';
 import { 
   enrollmentRequestSchema, 
   enrollmentRequestUpdateSchema,
@@ -30,12 +18,12 @@ export async function POST(request: NextRequest) {
     const enrollmentRequestData = {
       ...validatedData,
       status: 'Pending' as const,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: firebaseAdmin.admin.firestore.Timestamp.now(),
+      updatedAt: firebaseAdmin.admin.firestore.Timestamp.now(),
     };
     
     // Add to Firestore
-    const docRef = await addDoc(collection(firestore, 'enrollmentRequests'), enrollmentRequestData);
+    const docRef = await firebaseAdmin.db.collection('enrollmentRequests').add(enrollmentRequestData);
     
     // Return the created enrollment request with ID
     const createdRequest = {
@@ -67,30 +55,24 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const studentEmail = searchParams.get('studentEmail');
     
-    let enrollmentQuery = query(
-      collection(firestore, 'enrollmentRequests'),
-      orderBy('createdAt', 'desc')
-    );
+    let enrollmentQuery = firebaseAdmin.db.collection('enrollmentRequests')
+      .orderBy('createdAt', 'desc');
     
     // Filter by status if provided
     if (status && status !== 'all') {
-      enrollmentQuery = query(
-        collection(firestore, 'enrollmentRequests'),
-        where('status', '==', status),
-        orderBy('createdAt', 'desc')
-      );
+      enrollmentQuery = firebaseAdmin.db.collection('enrollmentRequests')
+        .where('status', '==', status)
+        .orderBy('createdAt', 'desc');
     }
     
     // Filter by student email if provided
     if (studentEmail) {
-      enrollmentQuery = query(
-        collection(firestore, 'enrollmentRequests'),
-        where('student.email', '==', studentEmail),
-        orderBy('createdAt', 'desc')
-      );
+      enrollmentQuery = firebaseAdmin.db.collection('enrollmentRequests')
+        .where('student.email', '==', studentEmail)
+        .orderBy('createdAt', 'desc');
     }
     
-    const querySnapshot = await getDocs(enrollmentQuery);
+    const querySnapshot = await enrollmentQuery.get();
     const enrollmentRequests = querySnapshot.docs.map(doc => {
       const data = doc.data() as Omit<EnrollmentRequestDocument, 'id'>;
       return convertEnrollmentRequestDocument({
@@ -127,17 +109,16 @@ export async function PUT(request: NextRequest) {
     // Add timestamp for processing
     const updatePayload: any = {
       ...validatedUpdateData,
-      updatedAt: Timestamp.now(),
+      updatedAt: firebaseAdmin.admin.firestore.Timestamp.now(),
     };
     
     // If status is being changed to approved/rejected, add processed timestamp
     if (validatedUpdateData.status === 'Approved' || validatedUpdateData.status === 'Rejected') {
-      updatePayload.processedAt = Timestamp.now();
+      updatePayload.processedAt = firebaseAdmin.admin.firestore.Timestamp.now();
     }
     
     // Update in Firestore
-    const enrollmentRef = doc(firestore, 'enrollmentRequests', id);
-    await updateDoc(enrollmentRef, updatePayload);
+    await firebaseAdmin.db.collection('enrollmentRequests').doc(id).update(updatePayload);
     
     return NextResponse.json({ 
       message: 'Enrollment request updated successfully',
@@ -174,7 +155,7 @@ export async function DELETE(request: NextRequest) {
     }
     
     // Delete from Firestore
-    await deleteDoc(doc(firestore, 'enrollmentRequests', id));
+    await firebaseAdmin.db.collection('enrollmentRequests').doc(id).delete();
     
     return NextResponse.json({ 
       message: 'Enrollment request deleted successfully',
