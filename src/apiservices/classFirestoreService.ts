@@ -343,4 +343,86 @@ export class ClassFirestoreService {
       throw new Error(`Failed to remove teacher: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+  /**
+   * Get classes by teacher ID
+   */
+  static async getClassesByTeacher(teacherId: string): Promise<ClassDocument[]> {
+    try {
+      console.log('🔍 Searching for classes with teacherId:', teacherId);
+      
+      // Use only the where clause to avoid composite index requirement
+      const q = query(
+        this.collectionRef,
+        where('teacherId', '==', teacherId)
+      );
+      
+      const snapshot = await getDocs(q);
+      console.log('🔍 Raw query returned', snapshot.docs.length, 'documents');
+      
+      // Log all documents to see what's actually in the database
+      snapshot.docs.forEach((doc, index) => {
+        const data = doc.data();
+        console.log(`🔍 Class ${index + 1}:`, {
+          id: doc.id,
+          name: data.name,
+          teacherId: data.teacherId,
+          status: data.status
+        });
+      });
+      
+      const classes = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        } as ClassDocument;
+      })
+      // Filter for active classes in JavaScript instead of in the query
+      .filter(cls => cls.status === 'Active')
+      // Sort by name in JavaScript
+      .sort((a, b) => a.name.localeCompare(b.name));
+      
+      console.log('✅ After filtering, returning', classes.length, 'active classes');
+      return classes;
+    } catch (error) {
+      console.error('Error fetching classes by teacher:', error);
+      throw new Error(`Failed to fetch classes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Debug method: Get all classes to inspect teacherId values
+   */
+  static async getAllClassesForDebug(): Promise<ClassDocument[]> {
+    try {
+      const snapshot = await getDocs(this.collectionRef);
+      console.log('🔍 Total classes in database:', snapshot.docs.length);
+      
+      const classes = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        console.log('🔍 Class debug:', {
+          id: doc.id,
+          name: data.name,
+          teacherId: data.teacherId,
+          status: data.status,
+          subject: data.subject
+        });
+        return {
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        } as ClassDocument;
+      });
+      
+      return classes;
+    } catch (error) {
+      console.error('Error fetching all classes:', error);
+      throw error;
+    }
+  }
+
 }

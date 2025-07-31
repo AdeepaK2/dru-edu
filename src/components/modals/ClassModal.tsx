@@ -391,7 +391,7 @@ export default function ClassModal({
                   .filter(teacher => teacher.status === 'Active')
                   .map(teacher => (
                     <option key={teacher.id} value={teacher.id}>
-                      {teacher.name} - {teacher.subject || 'Various'}
+                      {teacher.name} - {teacher.subjects?.join(', ') || 'Various'}
                     </option>
                   ))}
               </select>

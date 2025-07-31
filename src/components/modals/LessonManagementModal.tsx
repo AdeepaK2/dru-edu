@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Edit2, Trash2, BookOpen, Clock, Target, Package, CheckCircle, GripVertical } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, BookOpen, Clock, Target, Package, CheckCircle, ChevronUp, ChevronDown } from 'lucide-react';
 import { Button, ConfirmDialog } from '@/components/ui';
 import { 
   LessonDisplayData, 
@@ -10,67 +10,51 @@ import {
 } from '@/models/lessonSchema';
 import { LessonFirestoreService } from '@/apiservices/lessonFirestoreService';
 import LessonModal from './LessonModal';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import {
-  useSortable,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
-// Sortable Lesson Item Component
-interface SortableLessonProps {
+// Lesson Item Component with arrow controls
+interface LessonItemProps {
   lesson: LessonDisplayData;
   onEdit: (lesson: LessonDisplayData) => void;
   onDelete: (lesson: LessonDisplayData) => void;
+  onMoveUp: (lesson: LessonDisplayData) => void;
+  onMoveDown: (lesson: LessonDisplayData) => void;
   actionLoading: string | null;
+  isFirst: boolean;
+  isLast: boolean;
 }
 
-function SortableLesson({ lesson, onEdit, onDelete, actionLoading }: SortableLessonProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: lesson.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
+function LessonItem({ 
+  lesson, 
+  onEdit, 
+  onDelete, 
+  onMoveUp, 
+  onMoveDown, 
+  actionLoading,
+  isFirst,
+  isLast 
+}: LessonItemProps) {
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`bg-gray-50 dark:bg-gray-700 rounded-lg p-4 ${
-        isDragging ? 'z-50 shadow-lg' : ''
-      }`}
-    >
+    <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
       <div className="flex items-start justify-between">
         <div className="flex items-start space-x-3 flex-1">
-          {/* Drag Handle */}
-          <div
-            {...attributes}
-            {...listeners}
-            className="mt-1 cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            <GripVertical className="w-5 h-5" />
+          {/* Reorder Controls */}
+          <div className="flex flex-col space-y-1 mt-1">
+            <button
+              onClick={() => onMoveUp(lesson)}
+              disabled={isFirst || actionLoading === 'reordering'}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Move up"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => onMoveDown(lesson)}
+              disabled={isLast || actionLoading === 'reordering'}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Move down"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
           </div>
           
           <div className="flex-1">
@@ -188,20 +172,14 @@ export default function LessonManagementModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<LessonDisplayData | null>(null);
 
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
   // Load data when modal opens
   useEffect(() => {
     if (isOpen && subjectId) {
       loadData();
     }
-  }, [isOpen, subjectId]);  const loadData = async () => {
+  }, [isOpen, subjectId]);
+
+  const loadData = async () => {
     setLoading(true);
     setError(null);
     
@@ -216,45 +194,57 @@ export default function LessonManagementModal({
     }
   };
 
-  // Handle drag end for reordering lessons
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
+  // Helper function to move array elements
+  const moveArrayElement = <T,>(array: T[], fromIndex: number, toIndex: number): T[] => {
+    const newArray = [...array];
+    const element = newArray.splice(fromIndex, 1)[0];
+    newArray.splice(toIndex, 0, element);
+    return newArray;
+  };
 
-    if (over && active.id !== over.id) {
-      const oldIndex = lessons.findIndex((lesson) => lesson.id === active.id);
-      const newIndex = lessons.findIndex((lesson) => lesson.id === over.id);
+  // Handle moving lessons up or down
+  const handleMoveLesson = async (lesson: LessonDisplayData, direction: 'up' | 'down') => {
+    const currentIndex = lessons.findIndex(l => l.id === lesson.id);
+    if (currentIndex === -1) return;
 
-      if (oldIndex !== -1 && newIndex !== -1) {
-        const newLessons = arrayMove(lessons, oldIndex, newIndex);
-        
-        // Update the order property for each lesson based on new position
-        const updatedLessons = newLessons.map((lesson, index) => ({
-          ...lesson,
-          order: index + 1,
-        }));
+    let newIndex: number;
+    if (direction === 'up') {
+      if (currentIndex === 0) return; // Already at top
+      newIndex = currentIndex - 1;
+    } else {
+      if (currentIndex === lessons.length - 1) return; // Already at bottom
+      newIndex = currentIndex + 1;
+    }
 
-        // Optimistically update the UI
-        setLessons(updatedLessons);
+    // Create new array with moved lesson
+    const newLessons = moveArrayElement(lessons, currentIndex, newIndex);
+    
+    // Update the order property for each lesson based on new position
+    const updatedLessons = newLessons.map((lesson, index) => ({
+      ...lesson,
+      order: index + 1,
+    }));
 
-        // Update the order in the database
-        try {
-          setActionLoading('reordering');
-          
-          // Update all lessons with their new order
-          const updatePromises = updatedLessons.map(lesson =>
-            LessonFirestoreService.updateLesson(lesson.id, { order: lesson.order })
-          );
-          
-          await Promise.all(updatePromises);
-        } catch (error) {
-          console.error('Error updating lesson order:', error);
-          setError('Failed to update lesson order. Please try again.');
-          // Revert to original order on error
-          await loadData();
-        } finally {
-          setActionLoading(null);
-        }
-      }
+    // Optimistically update the UI
+    setLessons(updatedLessons);
+
+    // Update the order in the database
+    try {
+      setActionLoading('reordering');
+      
+      // Update all lessons with their new order
+      const updatePromises = updatedLessons.map(lesson =>
+        LessonFirestoreService.updateLesson(lesson.id, { order: lesson.order })
+      );
+      
+      await Promise.all(updatePromises);
+    } catch (error) {
+      console.error('Error updating lesson order:', error);
+      setError('Failed to update lesson order. Please try again.');
+      // Revert to original order on error
+      await loadData();
+    } finally {
+      setActionLoading(null);
     }
   };
   // Lesson handlers
@@ -375,8 +365,8 @@ export default function LessonManagementModal({
                       </h3>
                       {lessons.length > 1 && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center">
-                          <GripVertical className="w-3 h-3 mr-1" />
-                          Drag and drop to reorder lessons
+                          <ChevronUp className="w-3 h-3 mr-1" />
+                          Use arrow buttons to reorder lessons
                         </p>
                       )}
                     </div>
@@ -401,35 +391,28 @@ export default function LessonManagementModal({
                       </p>
                     </div>
                   ) : (
-                    <DndContext
-                      sensors={sensors}
-                      collisionDetection={closestCenter}
-                      onDragEnd={handleDragEnd}
-                    >
-                      <SortableContext
-                        items={lessons.map(lesson => lesson.id)}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <div className="space-y-4">
-                          {actionLoading === 'reordering' && (
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
-                              <p className="text-blue-800 dark:text-blue-200 text-sm">
-                                Updating lesson order...
-                              </p>
-                            </div>
-                          )}
-                          {lessons.map((lesson) => (
-                            <SortableLesson
-                              key={lesson.id}
-                              lesson={lesson}
-                              onEdit={handleEditLesson}
-                              onDelete={confirmDelete}
-                              actionLoading={actionLoading}
-                            />
-                          ))}
+                    <div className="space-y-4">
+                      {actionLoading === 'reordering' && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
+                          <p className="text-blue-800 dark:text-blue-200 text-sm">
+                            Updating lesson order...
+                          </p>
                         </div>
-                      </SortableContext>
-                    </DndContext>
+                      )}
+                      {lessons.map((lesson, index) => (
+                        <LessonItem
+                          key={lesson.id}
+                          lesson={lesson}
+                          onEdit={handleEditLesson}
+                          onDelete={confirmDelete}
+                          onMoveUp={(lesson) => handleMoveLesson(lesson, 'up')}
+                          onMoveDown={(lesson) => handleMoveLesson(lesson, 'down')}
+                          actionLoading={actionLoading}
+                          isFirst={index === 0}
+                          isLast={index === lessons.length - 1}
+                        />
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>

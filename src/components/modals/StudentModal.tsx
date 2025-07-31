@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Input } from '../ui';
+import { Modal, Button, Input, PhoneInput } from '../ui';
 import { Student, StudentDocument } from '@/models/studentSchema';
+import { validatePhoneNumber, toInternationalFormat } from '@/utils/phoneValidation';
 
 interface StudentModalProps {
   isOpen: boolean;
@@ -42,6 +43,10 @@ export default function StudentModal({
       lastPayment: 'N/A'
     }
   });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [studentCountryCode, setStudentCountryCode] = useState('+61');
+  const [parentCountryCode, setParentCountryCode] = useState('+61');
 
   // Initialize form data when modal opens or initialData changes
   useEffect(() => {
@@ -101,7 +106,38 @@ export default function StudentModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    
+    // Validate phone numbers
+    const newErrors: Record<string, string> = {};
+    
+    const studentPhoneValidation = validatePhoneNumber(formData.phone);
+    if (!studentPhoneValidation.isValid) {
+      newErrors.studentPhone = studentPhoneValidation.message || 'Invalid phone number';
+    }
+    
+    const parentPhoneValidation = validatePhoneNumber(formData.parent.phone);
+    if (!parentPhoneValidation.isValid) {
+      newErrors.parentPhone = parentPhoneValidation.message || 'Invalid phone number';
+    }
+    
+    setErrors(newErrors);
+    
+    // If there are validation errors, don't submit
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
+    
+    // Normalize phone numbers before submitting
+    const submissionData = {
+      ...formData,
+      phone: toInternationalFormat(formData.phone, studentCountryCode),
+      parent: {
+        ...formData.parent,
+        phone: toInternationalFormat(formData.parent.phone, parentCountryCode)
+      }
+    };
+    
+    onSubmit(submissionData);
   };
 
   const handleCancel = () => {

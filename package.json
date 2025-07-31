@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "cross-env TZ=Australia/Melbourne next dev --turbopack",
+    "dev:webpack": "cross-env TZ=Australia/Melbourne next dev",
+    "dev:turbo": "cross-env TZ=Australia/Melbourne next dev --turbopack",
     "build": "cross-env TZ=Australia/Melbourne next build",
     "build:firebase": "cross-env TZ=Australia/Melbourne FIREBASE_DEPLOY=true next build",
     "start": "cross-env TZ=Australia/Melbourne next start",
@@ -20,9 +22,6 @@
     "firebase:emulators": "firebase emulators:start"
   },
   "dependencies": {
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
     "firebase": "^11.8.1",
     "firebase-admin": "^13.4.0",
     "lucide-react": "^0.511.0",

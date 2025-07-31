@@ -4,6 +4,7 @@ export { default as Modal } from './Modal';
 export { default as Toast } from './Toast';
 export { default as ConfirmDialog } from './ConfirmDialog';
 export { ToastProvider, useToast } from './ToastProvider';
+export { default as TeacherAvatar } from './TeacherAvatar';
 
 // Form Components
 export { default as Input } from './form/Input';

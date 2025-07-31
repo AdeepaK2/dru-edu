@@ -6,6 +6,8 @@ import { QuestionBank } from '@/models/questionBankSchema';
 import { questionBankService } from '@/apiservices/questionBankFirestoreService';
 import { SubjectFirestoreService } from '@/apiservices/subjectFirestoreService';
 import { TeacherFirestoreService } from '@/apiservices/teacherFirestoreService';
+import { teacherAccessBankService } from '@/apiservices/teacherAccessBankService';
+import { TeacherAccessBank } from '@/models/teacherAccessBankSchema';
 import { SubjectDocument } from '@/models/subjectSchema';
 import QuestionBankModal from '@/components/modals/QuestionBankModal';
 import QuestionBankDetailModal from '@/components/modals/QuestionBankDetailModal';
@@ -33,7 +35,10 @@ export default function QuestionBanksPage() {
     grade: ''
   });
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);  const [assigningTeachers, setAssigningTeachers] = useState<{
+  const [subjects, setSubjects] = useState<SubjectDocument[]>([]);
+  const [teacherAccessMap, setTeacherAccessMap] = useState<Map<string, TeacherAccessBank[]>>(new Map());
+
+  const [assigningTeachers, setAssigningTeachers] = useState<{
     bankId: string, 
     showing: boolean, 
     selectedTeachers: string[]
@@ -93,7 +98,7 @@ export default function QuestionBanksPage() {
     fetchTeachers();
   }, []);
 
-  // Load question banks with filters
+  // Load question banks with filters and their teacher access
   useEffect(() => {
     const fetchQuestionBanks = async () => {
       setLoading(true);
@@ -114,6 +119,20 @@ export default function QuestionBanksPage() {
         // Fetch question banks from Firebase
         const banks = await questionBankService.listQuestionBanks(filterOptions);
         setQuestionBanks(banks);
+        
+        // Load teacher access for all banks
+        const accessMap = new Map<string, TeacherAccessBank[]>();
+        for (const bank of banks) {
+          try {
+            const access = await teacherAccessBankService.getTeachersWithAccess(bank.id);
+            accessMap.set(bank.id, access);
+          } catch (err) {
+            console.warn(`Failed to load access for bank ${bank.id}:`, err);
+            accessMap.set(bank.id, []);
+          }
+        }
+        setTeacherAccessMap(accessMap);
+        
       } catch (err: any) {
         console.error("Error fetching question banks:", err);
         setError(`Error: ${err.message || 'Failed to load question banks'}`);
@@ -175,10 +194,13 @@ export default function QuestionBanksPage() {
 
   // Handle assign teachers toggle
   const toggleAssignTeachers = (bank: QuestionBank) => {
+    const currentAccess = teacherAccessMap.get(bank.id) || [];
+    const currentTeacherIds = currentAccess.map(access => access.teacherId);
+    
     setAssigningTeachers({
       bankId: bank.id,
       showing: bank.id !== assigningTeachers.bankId || !assigningTeachers.showing,
-      selectedTeachers: bank.assignedTeacherIds || []
+      selectedTeachers: currentTeacherIds
     });
   };
 
@@ -196,29 +218,110 @@ export default function QuestionBanksPage() {
     });
   };
 
+  // Check current teacher access for a question bank
+  const handleCheckTeacherAccess = async (bank: QuestionBank) => {
+    try {
+      const accessList = await teacherAccessBankService.getTeachersWithAccess(bank.id);
+      
+      console.log(`🔍 Teachers with access to "${bank.name}":`);
+      if (accessList.length === 0) {
+        console.log('  No teachers have access');
+      } else {
+        accessList.forEach(access => {
+          console.log(`  - ${access.teacherName} (${access.teacherEmail}) - ${access.accessType} access`);
+        });
+      }
+      
+      alert(`Access check complete for "${bank.name}". Check the browser console for details.\n\nTeachers with access: ${accessList.length}`);
+      
+    } catch (error) {
+      console.error('Error checking teacher access:', error);
+      alert('Failed to check teacher access. Please try again.');
+    }
+  };
+
   // Save teacher assignments
   const handleSaveTeacherAssignments = async () => {
     try {
       const bank = questionBanks.find(b => b.id === assigningTeachers.bankId);
       if (!bank) return;
       
-      await questionBankService.updateQuestionBank(assigningTeachers.bankId, {
-        assignedTeacherIds: assigningTeachers.selectedTeachers
+      setActionLoading('assign-teachers');
+      
+      // Get current teacher access to know who to add/remove
+      const currentAccess = await teacherAccessBankService.getTeachersWithAccess(assigningTeachers.bankId);
+      const currentTeacherIds = currentAccess.map(access => access.teacherId);
+      
+      // Determine teachers to add and remove
+      const teachersToAdd = assigningTeachers.selectedTeachers.filter(
+        teacherId => !currentTeacherIds.includes(teacherId)
+      );
+      const teachersToRemove = currentTeacherIds.filter(
+        teacherId => !assigningTeachers.selectedTeachers.includes(teacherId)
+      );
+      
+      console.log('🔍 Teacher access changes:', {
+        toAdd: teachersToAdd.length,
+        toRemove: teachersToRemove.length,
+        currentAccess: currentTeacherIds.length,
+        newSelection: assigningTeachers.selectedTeachers.length
       });
       
-      // Update local state
-      setQuestionBanks(prev => prev.map(b => 
-        b.id === assigningTeachers.bankId
-          ? { ...b, assignedTeacherIds: assigningTeachers.selectedTeachers }
-          : b
-      ));
+      // Grant access to newly selected teachers
+      for (const teacherId of teachersToAdd) {
+        const teacher = teachers.find(t => t.id === teacherId);
+        if (teacher) {
+          try {
+            await teacherAccessBankService.grantAccess(
+              teacher.id,
+              teacher.name,
+              teacher.email,
+              bank.id,
+              bank.name,
+              bank.subjectId,
+              bank.subjectName,
+              'write', // Default to write access (read and write)
+              'admin_system', // Admin system ID
+              'Admin System', // Admin system name
+              undefined, // No expiry
+              `Access granted via admin question bank assignment`
+            );
+            console.log('✅ Granted access:', teacher.name);
+          } catch (error) {
+            console.warn('❌ Failed to grant access to', teacher.name, ':', error);
+          }
+        }
+      }
+      
+      // Revoke access from unselected teachers
+      for (const teacherId of teachersToRemove) {
+        try {
+          await teacherAccessBankService.revokeAccess(teacherId, bank.id);
+          const teacher = teachers.find(t => t.id === teacherId);
+          console.log('✅ Revoked access:', teacher?.name || teacherId);
+        } catch (error) {
+          console.warn('❌ Failed to revoke access from', teacherId, ':', error);
+        }
+      }
+      
+      // Update local teacher access map
+      const updatedAccess = await teacherAccessBankService.getTeachersWithAccess(bank.id);
+      setTeacherAccessMap(prev => {
+        const newMap = new Map(prev);
+        newMap.set(bank.id, updatedAccess);
+        return newMap;
+      });
       
       // Close the assignment panel
       setAssigningTeachers(prev => ({ ...prev, showing: false }));
       
+      console.log('✅ Teacher assignments updated successfully!');
+      
     } catch (err: any) {
       console.error("Error assigning teachers:", err);
       setError(`Error: ${err.message || 'Failed to assign teachers'}`);
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -255,27 +358,21 @@ export default function QuestionBanksPage() {
   };
   // Get assigned teacher names for a bank
   const getAssignedTeacherNames = (bank: QuestionBank): string => {
-    if (!bank.assignedTeacherIds || bank.assignedTeacherIds.length === 0) {
+    const accessList = teacherAccessMap.get(bank.id) || [];
+    
+    if (accessList.length === 0) {
       return 'No teachers assigned';
     }
     
-    const assignedTeachers = teachers.filter(t => 
-      bank.assignedTeacherIds?.includes(t.id)
-    );
-    
-    if (assignedTeachers.length === 0) {
-      return 'Unknown teachers';
+    if (accessList.length === 1) {
+      return `${accessList[0].teacherName} (${accessList[0].accessType})`;
     }
     
-    if (assignedTeachers.length === 1) {
-      return assignedTeachers[0].name;
+    if (accessList.length === 2) {
+      return `${accessList[0].teacherName} (${accessList[0].accessType}) and ${accessList[1].teacherName} (${accessList[1].accessType})`;
     }
     
-    if (assignedTeachers.length === 2) {
-      return `${assignedTeachers[0].name} and ${assignedTeachers[1].name}`;
-    }
-    
-    return `${assignedTeachers[0].name} and ${assignedTeachers.length - 1} others`;
+    return `${accessList[0].teacherName} (${accessList[0].accessType}) and ${accessList.length - 1} others`;
   };
 
   // Modal handlers
@@ -451,21 +548,31 @@ export default function QuestionBanksPage() {
                         </p>
                       </div>
                       
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => toggleAssignTeachers(bank)}
-                      >
-                        {assigningTeachers.bankId === bank.id && assigningTeachers.showing 
-                          ? 'Cancel' 
-                          : 'Assign Teachers'}
-                      </Button>
+                      <div className="flex space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCheckTeacherAccess(bank)}
+                        >
+                          Check Access
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => toggleAssignTeachers(bank)}
+                        >
+                          {assigningTeachers.bankId === bank.id && assigningTeachers.showing 
+                            ? 'Cancel' 
+                            : 'Assign Teachers'}
+                        </Button>
+                      </div>
                     </div>
                     
                     {/* Teacher assignment interface */}
                     {assigningTeachers.bankId === bank.id && assigningTeachers.showing && (
                       <div className="mt-4 border border-gray-200 rounded-md p-4 bg-gray-50">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">Select Teachers</h4>
+                        <h4 className="text-sm font-medium text-gray-700 mb-4">Select Teachers</h4>
+                        <p className="text-xs text-gray-600 mb-4">Teachers will be granted read & write access to this question bank.</p>
                         
                         <div className="space-y-2 max-h-60 overflow-y-auto">
                           {teachers.map(teacher => (
@@ -492,8 +599,16 @@ export default function QuestionBanksPage() {
                             variant="primary"
                             size="sm"
                             onClick={handleSaveTeacherAssignments}
+                            disabled={actionLoading === 'assign-teachers'}
                           >
-                            Save Assignments
+                            {actionLoading === 'assign-teachers' ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                Saving...
+                              </>
+                            ) : (
+                              'Save Assignments'
+                            )}
                           </Button>
                         </div>
                       </div>

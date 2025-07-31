@@ -6,8 +6,11 @@ import { Teacher, TeacherDocument, TeacherData } from '@/models/teacherSchema';
 import { firestore } from '@/utils/firebase-client';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { Button, ConfirmDialog, Input } from '@/components/ui';
+import { useToast } from '@/components/ui';
 import TeacherModal from '@/components/modals/TeacherModal';
 import { useCachedData } from '@/hooks/useAdminCache';
+import { ClassFirestoreService } from '@/apiservices/classFirestoreService';
+import { getMultipleTeacherClassCounts } from '@/utils/teacher-class-utils';
 
 export default function TeacherManagement() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,9 +20,14 @@ export default function TeacherManagement() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [teacherToDelete, setTeacherToDelete] = useState<TeacherDocument | null>(null);
+  const [localTeachers, setLocalTeachers] = useState<TeacherDocument[]>([]);
+  const [actualClassCounts, setActualClassCounts] = useState<Record<string, number>>({});
+
+  // Use toast for user feedback
+  const { showToast } = useToast();
 
   // Use cached data hook for efficient data management
-  const { data: teachers = [], loading, error, refetch } = useCachedData<TeacherDocument[]>(
+  const { data: teachers = [], loading, error, refetch, invalidate } = useCachedData<TeacherDocument[]>(
     'teachers',
     async () => {
       return new Promise<TeacherDocument[]>((resolve, reject) => {
@@ -52,9 +60,79 @@ export default function TeacherManagement() {
     { ttl: 120 } // Cache for 2 minutes
   );
 
+  // Sync cached data with local state (but don't override user actions)
+  const [lastSyncTimestamp, setLastSyncTimestamp] = useState(0);
+  
+  React.useEffect(() => {
+    if (teachers && teachers.length > 0) {
+      // Only sync if this is initial load or if we haven't made recent changes
+      const now = Date.now();
+      if (now - lastSyncTimestamp > 1000) { // Wait 1 second after last user action
+        console.log('Syncing cached data with local state');
+        setLocalTeachers(teachers);
+        
+        // Load actual class counts for all teachers
+        loadActualClassCounts(teachers);
+      }
+    }
+  }, [teachers, lastSyncTimestamp]);
+
+  // Load actual class counts for all teachers
+  const loadActualClassCounts = async (teachersList: TeacherDocument[]) => {
+    try {
+      console.log('🔍 Loading actual class counts for', teachersList.length, 'teachers');
+      
+      // Use utility function for better performance
+      const teacherIds = teachersList.map(t => t.id);
+      const counts = await getMultipleTeacherClassCounts(teacherIds);
+      
+      setActualClassCounts(counts);
+      console.log('✅ Loaded actual class counts:', counts);
+    } catch (error) {
+      console.error('❌ Error loading class counts:', error);
+    }
+  };
+
+  // Debug function to test class loading
+  const debugClassData = async () => {
+    try {
+      console.log('🔍 DEBUG: Testing class data loading...');
+      
+      // Get all classes
+      const allClasses = await ClassFirestoreService.getAllClasses();
+      console.log('📋 All classes in database:', allClasses.length);
+      
+      allClasses.forEach((cls, index) => {
+        console.log(`📝 Class ${index + 1}:`, {
+          id: cls.id,
+          name: cls.name,
+          teacherId: cls.teacherId || 'NO TEACHER',
+          status: cls.status
+        });
+      });
+      
+      // Test specific teacher
+      if (localTeachers.length > 0) {
+        const firstTeacher = localTeachers[0];
+        console.log('🧪 Testing with first teacher:', firstTeacher.id, firstTeacher.name);
+        
+        const teacherClasses = await ClassFirestoreService.getClassesByTeacher(firstTeacher.id);
+        console.log('📊 Classes for this teacher:', teacherClasses.length);
+      }
+      
+      showToast('Debug info logged to console', 'info');
+    } catch (error) {
+      console.error('❌ Debug error:', error);
+      showToast('Debug failed - check console', 'error');
+    }
+  };
+
+  // Use local teachers for display
+  const displayTeachers = localTeachers;
+
   // Use simple console logging for now
-  const showSuccess = (message: string) => console.log('Success:', message);
-  const showError = (message: string) => console.error('Error:', message);
+  // const showSuccess = (message: string) => console.log('Success:', message);
+  // const showError = (message: string) => console.error('Error:', message);
   // Teacher create handler
   const handleTeacherCreate = async (teacherData: TeacherData) => {
     setActionLoading('create');
@@ -68,7 +146,7 @@ export default function TeacherManagement() {
         body: JSON.stringify({
           ...teacherData,
           avatar: '',
-          classesAssigned: 0,
+          // Removed classesAssigned - will use dynamic queries instead
           studentsCount: 0,
         }),
       });
@@ -79,12 +157,18 @@ export default function TeacherManagement() {
       }
 
       const savedTeacher = await response.json();
-      showSuccess('Teacher created successfully!');
+      showToast('Teacher created successfully!', 'success');
       setShowAddModal(false);
-      refetch(); // Refresh data
+      
+      // Add to local state immediately
+      setLocalTeachers(prev => [savedTeacher, ...prev]);
+      setLastSyncTimestamp(Date.now());
+      
+      // Also refresh cache
+      refetch();
     } catch (error) {
       console.error('Error creating teacher:', error);
-      showError(error instanceof Error ? error.message : 'Failed to create teacher');
+      showToast(error instanceof Error ? error.message : 'Failed to create teacher', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -97,15 +181,12 @@ export default function TeacherManagement() {
     setActionLoading('update');
     
     try {
-      const response = await fetch('/api/teacher', {
-        method: 'PUT',
+      const response = await fetch(`/api/teacher?id=${editingTeacher.id}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          id: editingTeacher.id,
-          ...teacherData,
-        }),
+        body: JSON.stringify(teacherData),
       });
       
       if (!response.ok) {
@@ -113,13 +194,22 @@ export default function TeacherManagement() {
         throw new Error(errorData.error || 'Failed to update teacher');
       }
 
-      showSuccess('Teacher updated successfully!');
+      const updatedTeacher = await response.json();
+      showToast('Teacher updated successfully!', 'success');
       setShowEditModal(false);
       setEditingTeacher(null);
-      refetch(); // Refresh data
+      
+      // Update local state immediately
+      setLocalTeachers(prev => prev.map(teacher => 
+        teacher.id === editingTeacher.id ? updatedTeacher : teacher
+      ));
+      setLastSyncTimestamp(Date.now());
+      
+      // Also refresh cache
+      refetch();
     } catch (error) {
       console.error('Error updating teacher:', error);
-      showError(error instanceof Error ? error.message : 'Failed to update teacher');
+      showToast(error instanceof Error ? error.message : 'Failed to update teacher', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -132,12 +222,8 @@ export default function TeacherManagement() {
     setActionLoading('delete');
     
     try {
-      const response = await fetch('/api/teacher', {
+      const response = await fetch(`/api/teacher?id=${teacherToDelete.id}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: teacherToDelete.id }),
       });
       
       if (!response.ok) {
@@ -145,13 +231,29 @@ export default function TeacherManagement() {
         throw new Error(errorData.error || 'Failed to delete teacher');
       }
 
-      showSuccess('Teacher deleted successfully!');
+      showToast('Teacher deleted successfully!', 'success');
       setShowDeleteConfirm(false);
       setTeacherToDelete(null);
-      refetch(); // Refresh data
+      
+      // Immediately remove from local state for instant UI update
+      console.log('Before deletion - teachers count:', localTeachers.length);
+      console.log('Deleting teacher with ID:', teacherToDelete.id);
+      
+      setLocalTeachers(prev => {
+        const updated = prev.filter(teacher => teacher.id !== teacherToDelete.id);
+        console.log('After deletion - teachers count:', updated.length);
+        return updated;
+      });
+      setLastSyncTimestamp(Date.now());
+      
+      // Also invalidate cache and refetch to stay in sync
+      invalidate();
+      setTimeout(async () => {
+        await refetch();
+      }, 500); // Small delay to ensure deletion has propagated
     } catch (error) {
       console.error('Error deleting teacher:', error);
-      showError(error instanceof Error ? error.message : 'Failed to delete teacher');
+      showToast(error instanceof Error ? error.message : 'Failed to delete teacher', 'error');
     } finally {
       setActionLoading(null);
     }
@@ -159,15 +261,33 @@ export default function TeacherManagement() {
 
   // Filter teachers based on search term
   const filteredTeachers = useMemo(() => {
-    if (!teachers) return [];
+    if (!displayTeachers) return [];
     
-    return teachers.filter(teacher =>
-      teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      teacher.phone.includes(searchTerm) ||
-      teacher.id.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [teachers, searchTerm]);
+    return displayTeachers.filter(teacher => {
+      const searchLower = searchTerm.toLowerCase();
+      
+      // Search in basic fields
+      const basicMatch = teacher.name.toLowerCase().includes(searchLower) ||
+        teacher.email.toLowerCase().includes(searchLower) ||
+        teacher.phone.includes(searchTerm) ||
+        teacher.id.toLowerCase().includes(searchLower);
+      
+      // Search in subject-grade combinations
+      const subjectGradeMatch = teacher.subjectGrades?.some(sg => 
+        sg.subjectName.toLowerCase().includes(searchLower) ||
+        sg.grade.toLowerCase().includes(searchLower) ||
+        `${sg.subjectName} grade ${sg.grade}`.toLowerCase().includes(searchLower)
+      ) || false;
+      
+      // Search in legacy subjects array (fallback)
+      const legacySubjectMatch = teacher.subjects?.some(subject => 
+        subject.toLowerCase().includes(searchLower)
+      ) || false;
+      
+      return basicMatch || subjectGradeMatch || legacySubjectMatch;
+    });
+  }, [displayTeachers, searchTerm]);
+
 
   // Handle edit button click
   const handleEditClick = (teacher: TeacherDocument) => {
@@ -206,6 +326,14 @@ export default function TeacherManagement() {
             </p>
           </div>
           <div className="flex items-center space-x-4">
+            <Button
+              onClick={debugClassData}
+              variant="outline"
+              size="sm"
+              className="text-purple-600 border-purple-300 hover:bg-purple-50"
+            >
+              Debug Classes
+            </Button>
             <div className="flex items-center bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-lg">
               <GraduationCap className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
               <span className="text-blue-600 dark:text-blue-400 font-medium">
@@ -295,7 +423,14 @@ export default function TeacherManagement() {
                     <div className="text-sm text-gray-900 dark:text-white">{teacher.email}</div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.phone}</div>
                   </td>                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900 dark:text-white">{teacher.subject || 'Various'}</div>
+                    <div className="text-sm text-gray-900 dark:text-white">
+                      {teacher.subjectGrades && teacher.subjectGrades.length > 0 
+                        ? teacher.subjectGrades.map(sg => `${sg.subjectName} (Grade ${sg.grade})`).join(', ')
+                        : teacher.subjects && teacher.subjects.length > 0 
+                          ? teacher.subjects.join(', ')
+                          : 'No subjects assigned'
+                      }
+                    </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">{teacher.qualifications || 'N/A'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -309,7 +444,10 @@ export default function TeacherManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900 dark:text-white">
-                      {teacher.classesAssigned || 0} classes
+                      {actualClassCounts[teacher.id] !== undefined 
+                        ? `${actualClassCounts[teacher.id]} classes`
+                        : 'Loading classes...'
+                      }
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

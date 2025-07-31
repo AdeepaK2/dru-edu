@@ -500,14 +500,14 @@ export default function QuestionsPage() {
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-500">
                                 <div className="space-y-1">
-                                  {mcqQuestion.options.slice(0, 2).map((option) => (
+                                  {mcqQuestion.options.slice(0, 2).map((option, optionIndex) => (
                                     <div key={option.id} className={option.isCorrect 
                                       ? "text-green-700 font-medium flex items-center" 
                                       : "text-gray-600 flex items-center"}>                                      {option.isCorrect && (
                                         <CheckCircle className="h-4 w-4 mr-1 text-green-600" />
                                       )}
                                       <span className={option.isCorrect ? "px-2 py-1 bg-green-50 border border-green-200 rounded" : ""}>
-                                        {option.text.substring(0, 20)}{option.text.length > 20 ? '...' : ''}
+                                        {(option.text || `Option ${String.fromCharCode(65 + optionIndex)}`).substring(0, 20)}{(option.text || `Option ${String.fromCharCode(65 + optionIndex)}`).length > 20 ? '...' : ''}
                                       </span>
                                     </div>
                                   ))}

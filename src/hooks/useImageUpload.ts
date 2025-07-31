@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { QuestionImageService } from '@/apiservices/questionImageService';
+import { auth } from '@/utils/firebase-client';
 
 // Types for the image upload hook
 interface UploadOptions {
@@ -27,6 +28,17 @@ export const useImageUpload = () => {
    * @returns Promise with the upload result
    */
   const uploadImage = async (file: File, options: UploadOptions): Promise<UploadResult> => {
+    console.log('🔍 Starting image upload:', { file: file.name, size: file.size, type: options.type });
+    
+    // Check authentication
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error('❌ User not authenticated');
+      return { imageUrl: '', error: 'User not authenticated. Please log in again.' };
+    }
+    
+    console.log('✅ User authenticated:', currentUser.uid);
+    
     if (!file) {
       return { imageUrl: '', error: 'No file provided' };
     }
@@ -36,12 +48,20 @@ export const useImageUpload = () => {
       return { imageUrl: '', error: 'File must be an image' };
     }
 
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) {
+      return { imageUrl: '', error: 'File size must be less than 10MB' };
+    }
+
     setIsUploading(true);
     setProgress(0);
     setError(null);
 
     try {
       let downloadURL: string;
+
+      console.log('🔍 Uploading to QuestionImageService with options:', options);
 
       // Use QuestionImageService to upload directly to Firebase Storage
       if (options.type === 'question') {
@@ -54,15 +74,18 @@ export const useImageUpload = () => {
         throw new Error('Invalid upload options');
       }
 
+      console.log('✅ Image uploaded successfully:', downloadURL);
       setIsUploading(false);
       setProgress(100);
       
       return { imageUrl: downloadURL, error: null };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown upload error';
+      console.error('❌ Image upload error:', err);
+      console.error('Error details:', { message: errorMessage, error: err });
+      
       setError(errorMessage);
       setIsUploading(false);
-      console.error('Image upload error:', err);
       
       return { imageUrl: '', error: errorMessage };
     }

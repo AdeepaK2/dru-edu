@@ -181,6 +181,14 @@ export class VideoFirestoreService {
         documentData.subjectName = validatedData.subjectName;
       }
       
+      if (validatedData.lessonId && validatedData.lessonId.trim()) {
+        documentData.lessonId = validatedData.lessonId;
+      }
+      
+      if (validatedData.lessonName && validatedData.lessonName.trim()) {
+        documentData.lessonName = validatedData.lessonName;
+      }
+      
       if (validatedData.assignedClassIds && validatedData.assignedClassIds.length > 0) {
         documentData.assignedClassIds = validatedData.assignedClassIds;
       }
@@ -199,7 +207,9 @@ export class VideoFirestoreService {
       
       if (validatedData.price !== undefined && validatedData.price >= 0) {
         documentData.price = validatedData.price;
-      }      const docRef = await addDoc(this.collectionRef, documentData);
+      }
+      
+      const docRef = await addDoc(this.collectionRef, documentData);
       return docRef.id;
     } catch (error) {
       console.error('Error creating video:', error);
@@ -432,4 +442,32 @@ export class VideoFirestoreService {
       throw new Error(`Failed to search videos: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+  /**
+   * Get videos by teacher ID (no index required)
+   */
+  static async getVideosByTeacher(teacherId: string): Promise<VideoDocument[]> {
+    try {
+      // Simple query with only where clause to avoid composite index
+      const querySnapshot = await getDocs(
+        query(this.collectionRef, where('teacherId', '==', teacherId))
+      );
+      
+      const videos = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as VideoDocument));
+      
+      // Sort by creation date in JavaScript (newest first)
+      return videos.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis() || 0;
+        const timeB = b.createdAt?.toMillis() || 0;
+        return timeB - timeA;
+      });
+    } catch (error) {
+      console.error('Error fetching videos by teacher:', error);
+      throw new Error(`Failed to fetch videos by teacher: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
 }

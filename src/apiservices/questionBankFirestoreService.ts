@@ -282,7 +282,8 @@ export const questionBankService = {
 
   // List question banks with filters
   async listQuestionBanks(filters?: {
-    subjectId?: string;    grade?: string;
+    subjectId?: string;
+    grade?: string;
   }): Promise<QuestionBank[]> {
     const collectionRef = collection(db, QUESTION_BANKS_COLLECTION);
     

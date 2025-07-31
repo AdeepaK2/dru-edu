@@ -85,13 +85,13 @@ export class TeacherFirestoreService {
   }
 
   /**
-   * Get teachers by subject
+   * Get teachers by subject (updated to work with subjects array)
    */
   static async getTeachersBySubject(subject: string): Promise<TeacherDocument[]> {
     try {
       const q = query(
         this.collectionRef, 
-        where('subject', '==', subject),
+        where('subjects', 'array-contains', subject),
         orderBy('createdAt', 'desc')
       );
       const querySnapshot = await getDocs(q);
