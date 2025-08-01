@@ -16,63 +16,54 @@ export default function PaymentSuccessPage() {
   useEffect(() => {
     const verifyPayment = async () => {
       try {
+        // Check for URL parameters first (Stripe redirect flow)
         const paymentIntent = searchParams.get('payment_intent');
-        const paymentIntentClientSecret = searchParams.get('payment_intent_client_secret');
         const redirectStatus = searchParams.get('redirect_status');
-        const videoId = searchParams.get('video_id');
-
-        // Handle custom redirect from our payment form (non-Stripe redirect)
-        if (!paymentIntent && redirectStatus === 'succeeded' && videoId) {
+        
+        // Check for localStorage (custom flow from purchase page)
+        const videoId = localStorage.getItem('purchasing_video_id');
+        
+        if (paymentIntent && redirectStatus) {
+          // Handle Stripe redirect flow
+          if (redirectStatus === 'succeeded') {
+            setStatus('success');
+            setMessage('Payment successful! You now have access to the video.');
+            
+            // Redirect to video after a delay
+            setTimeout(() => {
+              if (videoId) {
+                localStorage.removeItem('purchasing_video_id');
+                router.push(`/student/video/${videoId}/watch`);
+              } else {
+                router.push('/student/videos');
+              }
+            }, 3000);
+          } else if (redirectStatus === 'processing') {
+            setStatus('loading');
+            setMessage('Payment is being processed...');
+            
+            // Check status after a delay
+            setTimeout(() => {
+              window.location.reload();
+            }, 5000);
+          } else {
+            setStatus('error');
+            setMessage('Payment was not successful. Please try again.');
+          }
+        } else if (videoId) {
+          // Handle custom flow - assume success if we got here with videoId
           setStatus('success');
           setMessage('Payment successful! You now have access to the video.');
           
-          // Redirect to video tabs/class section after a delay
+          // Redirect to video after a delay
           setTimeout(() => {
-            const storedVideoId = localStorage.getItem('purchasing_video_id');
-            if (storedVideoId) {
-              localStorage.removeItem('purchasing_video_id');
-              // Redirect to student videos page where they can see their purchased videos
-              router.push('/student/videos');
-            } else {
-              router.push('/student/videos');
-            }
+            localStorage.removeItem('purchasing_video_id');
+            router.push(`/student/video/${videoId}/watch`);
           }, 3000);
-          return;
-        }
-
-        // Handle standard Stripe redirect
-        if (!paymentIntent) {
-          setStatus('error');
-          setMessage('Missing payment information');
-          return;
-        }
-
-        if (redirectStatus === 'succeeded') {
-          setStatus('success');
-          setMessage('Payment successful! You now have access to the video.');
-          
-          // Redirect to video tabs/class section after a delay
-          setTimeout(() => {
-            const videoId = localStorage.getItem('purchasing_video_id');
-            if (videoId) {
-              localStorage.removeItem('purchasing_video_id');
-              // Redirect to student videos page where they can see their purchased videos
-              router.push('/student/videos');
-            } else {
-              router.push('/student/videos');
-            }
-          }, 3000);
-        } else if (redirectStatus === 'processing') {
-          setStatus('loading');
-          setMessage('Payment is being processed...');
-          
-          // Check status after a delay
-          setTimeout(() => {
-            window.location.reload();
-          }, 5000);
         } else {
+          // No payment info found
           setStatus('error');
-          setMessage('Payment was not successful. Please try again.');
+          setMessage('No payment information found. Please try purchasing again.');
         }
 
       } catch (error) {
@@ -95,12 +86,12 @@ export default function PaymentSuccessPage() {
     }
   };
 
-  const handleGoToVideos = () => {
+  const handleWatchVideo = () => {
     const videoId = localStorage.getItem('purchasing_video_id');
     if (videoId) {
       localStorage.removeItem('purchasing_video_id');
+      router.push(`/student/video/${videoId}/watch`);
     }
-    router.push('/student/videos');
   };
 
   if (status === 'loading') {
@@ -131,21 +122,21 @@ export default function PaymentSuccessPage() {
             {message}
           </p>
           <p className="text-sm text-green-600 dark:text-green-400 mb-8">
-            Redirecting to your videos page where you can access your purchased content...
+            Redirecting to video player in a few seconds...
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button 
-              onClick={handleGoToVideos}
+              onClick={handleWatchVideo}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
               <Play className="w-4 h-4 mr-2" />
-              Go to My Videos
+              Watch Video Now
             </Button>
             <Button 
-              onClick={() => router.push('/student/dashboard')}
+              onClick={() => router.push('/student/videos')}
               variant="outline"
             >
-              Back to Dashboard
+              Go to My Videos
             </Button>
           </div>
         </div>

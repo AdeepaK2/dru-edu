@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { VideoPurchaseServerService } from '@/apiservices/videoPurchaseServerService';
 import { firebaseAdmin } from '@/utils/firebase-server';
-import { Timestamp } from 'firebase-admin/firestore';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-07-30.basil',
@@ -114,31 +114,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Admin SDK version of updatePurchaseStatus for webhook context
-async function updatePurchaseStatusAdmin(
-  purchaseId: string, 
-  status: 'pending' | 'completed' | 'failed' | 'refunded',
-  additionalData?: any
-): Promise<void> {
-  try {
-    const updateData: any = {
-      paymentStatus: status,
-      updatedAt: Timestamp.now(),
-      ...additionalData
-    };
-    
-    if (status === 'completed') {
-      updateData.purchasedAt = Timestamp.now();
-    }
-    
-    await firebaseAdmin.firestore.updateDoc('videoPurchases', purchaseId, updateData);
-    console.log('✅ Purchase status updated successfully via Admin SDK');
-  } catch (error) {
-    console.error('❌ Error updating purchase status:', error);
-    throw new Error(`Failed to update purchase status: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
 async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
   try {
     const { purchaseId, videoId, studentId, studentEmail } = paymentIntent.metadata;
@@ -150,7 +125,7 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 
     // Use purchaseId for direct lookup (more secure than searching)
     try {
-      await updatePurchaseStatusAdmin(
+      await VideoPurchaseServerService.updatePurchaseStatus(
         purchaseId,
         'completed',
         {
@@ -191,7 +166,7 @@ async function handlePaymentFailure(paymentIntent: Stripe.PaymentIntent) {
     }
 
     try {
-      await updatePurchaseStatusAdmin(
+      await VideoPurchaseServerService.updatePurchaseStatus(
         purchaseId,
         'failed'
       );
@@ -227,7 +202,7 @@ async function handlePaymentCanceled(paymentIntent: Stripe.PaymentIntent) {
     }
 
     try {
-      await updatePurchaseStatusAdmin(
+      await VideoPurchaseServerService.updatePurchaseStatus(
         purchaseId,
         'failed' // Use 'failed' as there's no 'canceled' status
       );

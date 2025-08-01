@@ -12,13 +12,21 @@ import {
   Book,
   Star,
   Lock,
-  AlertCircle
+  AlertCircle,
+  Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { useStudentAuth } from '@/hooks/useStudentAuth';
 import { useRouter } from 'next/navigation';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { 
+  Elements, 
+  CardNumberElement, 
+  CardExpiryElement, 
+  CardCvcElement, 
+  useStripe, 
+  useElements 
+} from '@stripe/react-stripe-js';
 
 // Import services and types
 import { VideoFirestoreService } from '@/apiservices/videoFirestoreService';
@@ -46,13 +54,14 @@ const stripeElementsOptions = {
   },
 };
 
-// Card Element styling for individual elements
+// Card Element styling
 const cardElementOptions = {
   style: {
     base: {
       fontSize: '16px',
       color: '#374151',
       fontFamily: 'Inter, system-ui, sans-serif',
+      letterSpacing: '0.025em',
       '::placeholder': {
         color: '#9CA3AF',
       },
@@ -82,10 +91,10 @@ function PaymentForm({
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardExpiryComplete, setCardExpiryComplete] = useState(false);
   const [cardCvcComplete, setCardCvcComplete] = useState(false);
+  const [cardBrand, setCardBrand] = useState<string>('unknown');
   const [cardError, setCardError] = useState<string | null>(null);
 
-  // Check if all card fields are complete
-  const allFieldsComplete = cardNumberComplete && cardExpiryComplete && cardCvcComplete;
+  const isCardComplete = cardNumberComplete && cardExpiryComplete && cardCvcComplete;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -101,8 +110,8 @@ function PaymentForm({
       return;
     }
 
-    if (!allFieldsComplete) {
-      onError('Please complete all card information fields.');
+    if (!isCardComplete) {
+      onError('Please complete your card information.');
       return;
     }
 
@@ -122,7 +131,7 @@ function PaymentForm({
 
       console.log('📦 Payment intent created:', paymentData.clientSecret);
 
-      // Confirm payment with card number element (Stripe automatically uses other elements)
+      // Confirm payment with card element
       const { error, paymentIntent } = await stripe.confirmCardPayment(
         paymentData.clientSecret,
         {
@@ -153,107 +162,126 @@ function PaymentForm({
     }
   };
 
-  const handleCardNumberChange = (event: any) => {
-    setCardNumberComplete(event.complete);
-    if (event.error) {
-      setCardError(event.error.message);
-    } else {
-      setCardError(null);
-    }
-  };
-
-  const handleCardExpiryChange = (event: any) => {
-    setCardExpiryComplete(event.complete);
-    if (event.error) {
-      setCardError(event.error.message);
-    } else if (!cardError || cardError === event.error?.message) {
-      setCardError(null);
-    }
-  };
-
-  const handleCardCvcChange = (event: any) => {
-    setCardCvcComplete(event.complete);
-    if (event.error) {
-      setCardError(event.error.message);
-    } else if (!cardError || cardError === event.error?.message) {
-      setCardError(null);
-    }
-  };
-
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Card Number */}
+      {/* Card Information Section */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-          Card Number
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+          Card Information
         </label>
-        <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-          <CardNumberElement
-            options={cardElementOptions}
-            onChange={handleCardNumberChange}
-          />
-        </div>
-      </div>
-
-      {/* Card Expiry and CVC */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Expiry Date
+        
+        {/* Card Number */}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+            Card Number
           </label>
-          <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-            <CardExpiryElement
-              options={cardElementOptions}
-              onChange={handleCardExpiryChange}
-            />
+          <div className="relative">
+            <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:ring-2 focus-within:ring-green-500 focus-within:border-green-500 transition-all">
+              <CardNumberElement
+                options={cardElementOptions}
+                onChange={(event) => {
+                  setCardNumberComplete(event.complete);
+                  setCardBrand(event.brand || 'unknown');
+                  setCardError(event.error?.message || null);
+                }}
+              />
+            </div>
+            {/* Card Brand Icon */}
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              {cardBrand === 'visa' && (
+                <div className="text-blue-600 font-bold text-sm">VISA</div>
+              )}
+              {cardBrand === 'mastercard' && (
+                <div className="text-red-500 font-bold text-sm">MC</div>
+              )}
+              {cardBrand === 'amex' && (
+                <div className="text-blue-500 font-bold text-sm">AMEX</div>
+              )}
+              {cardBrand === 'unknown' && cardNumberComplete && (
+                <CreditCard className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+          </div>
+          {cardError && (
+            <p className="mt-1 text-sm text-red-600 dark:text-red-400">{cardError}</p>
+          )}
+        </div>
+
+        {/* Expiry and CVC Row */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* Expiry Date */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+              MM / YY
+            </label>
+            <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:ring-2 focus-within:ring-green-500 focus-within:border-green-500 transition-all">
+              <CardExpiryElement
+                options={cardElementOptions}
+                onChange={(event) => {
+                  setCardExpiryComplete(event.complete);
+                }}
+              />
+            </div>
+          </div>
+
+          {/* CVC */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+              CVC
+            </label>
+            <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus-within:ring-2 focus-within:ring-green-500 focus-within:border-green-500 transition-all">
+              <CardCvcElement
+                options={cardElementOptions}
+                onChange={(event) => {
+                  setCardCvcComplete(event.complete);
+                }}
+              />
+            </div>
           </div>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            CVC
-          </label>
-          <div className="p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
-            <CardCvcElement
-              options={cardElementOptions}
-              onChange={handleCardCvcChange}
-            />
-          </div>
-        </div>
       </div>
-
-      {/* Error Display */}
-      {cardError && (
-        <div className="text-red-600 text-sm mt-1">
-          {cardError}
-        </div>
-      )}
 
       {/* Submit Button */}
       <Button
         type="submit"
-        disabled={!stripe || processing || !allFieldsComplete}
-        className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
+        disabled={!stripe || processing || !isCardComplete}
+        className={`w-full py-4 text-white font-semibold rounded-lg transition-all transform ${
+          isCardComplete && !processing
+            ? 'bg-green-600 hover:bg-green-700 hover:scale-[1.02] shadow-lg'
+            : 'bg-gray-400 cursor-not-allowed'
+        }`}
         size="lg"
       >
         {processing ? (
           <div className="flex items-center justify-center">
-            <div className="w-4 h-4 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
+            <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-3"></div>
             Processing Payment...
           </div>
         ) : (
           <div className="flex items-center justify-center">
-            <CreditCard className="w-5 h-5 mr-2" />
-            Pay ${video.price}
+            <Shield className="w-5 h-5 mr-3" />
+            Pay ${video.price} Securely
           </div>
         )}
       </Button>
 
-      {/* Security Note */}
-      <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded text-xs text-gray-600 dark:text-gray-300">
-        <p className="flex items-center justify-center">
-          <Lock className="w-3 h-3 mr-1" />
-          Secure payment powered by Stripe
-        </p>
+      {/* Security Notes */}
+      <div className="space-y-3">
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+          <div className="flex items-center text-green-700 dark:text-green-300">
+            <Shield className="w-4 h-4 mr-2" />
+            <span className="text-sm font-medium">256-bit SSL encrypted payment</span>
+          </div>
+        </div>
+        
+        <div className="text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Powered by Stripe • PCI DSS compliant
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Your payment information is secure and never stored on our servers
+          </p>
+        </div>
       </div>
     </form>
   );
@@ -352,13 +380,7 @@ export default function VideoPurchasePage({ params }: VideoPurchasePageProps) {
     localStorage.setItem('purchasing_video_id', video!.id);
     // Redirect after a brief delay to show success message
     setTimeout(() => {
-      // Include parameters that the success page expects
-      const successParams = new URLSearchParams({
-        redirect_status: 'succeeded',
-        payment_intent: 'custom_payment', // We don't have the actual payment_intent ID on client
-        video_id: video!.id
-      });
-      router.push(`/student/video/payment/success?${successParams.toString()}`);
+      router.push('/student/video/payment/success');
     }, 2000);
   };
 

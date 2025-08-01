@@ -138,9 +138,9 @@ export default function StudentVideos() {
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            <div className="flex items-center bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-lg">
-              <Users className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-2" />
-              <span className="text-blue-600 dark:text-blue-400 font-medium">
+            <div className="flex items-center bg-green-50 dark:bg-green-900/20 px-4 py-2 rounded-lg">
+              <Users className="w-5 h-5 text-green-600 dark:text-green-400 mr-2" />
+              <span className="text-green-600 dark:text-green-400 font-medium">
                 {studentClasses.length} Classes
               </span>
             </div>
@@ -169,7 +169,7 @@ export default function StudentVideos() {
             placeholder="Search classes..."
             value={searchTerm}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-            className="pl-10 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+            className="pl-10 w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
           />
         </div>
       </div>
@@ -216,13 +216,13 @@ const ClassCard: React.FC<ClassCardProps> = ({ classInfo }) => {
     <Link href={`/student/classes/${classInfo.id}/videos`}>
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden hover:shadow-md transition-shadow cursor-pointer group">
         {/* Class Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4">
+        <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-4">
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <h3 className="text-lg font-semibold truncate mb-1">
                 {classInfo.name}
               </h3>
-              <p className="text-blue-100 text-sm">
+              <p className="text-green-100 text-sm">
                 {classInfo.subject} • Grade {classInfo.grade}
               </p>
             </div>
@@ -253,7 +253,7 @@ const ClassCard: React.FC<ClassCardProps> = ({ classInfo }) => {
                 <span className="text-gray-500 dark:text-gray-400">
                   Browse Videos
                 </span>
-                <div className="flex items-center space-x-1 text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">
+                <div className="flex items-center space-x-1 text-green-600 dark:text-green-400 group-hover:text-green-700 dark:group-hover:text-green-300 transition-colors">
                   <Play className="w-4 h-4" />
                   <span className="font-medium">Open</span>
                 </div>

@@ -26,12 +26,6 @@ export const videoPurchaseSchema = z.object({
     originalPrice: z.number().optional(), // In case of discounts
     discountApplied: z.number().optional(),
     promoCode: z.string().optional(),
-    // Teacher payout tracking fields
-    teacherEarning: z.number().optional(), // Amount that goes to teacher (e.g., 80%)
-    platformFee: z.number().optional(), // Platform fee (e.g., 20%)
-    payoutStatus: z.enum(['pending', 'paid', 'held']).optional(), // Track payout status
-    payoutDate: z.union([z.date(), z.instanceof(Timestamp)]).optional(), // When payout was made
-    payoutReference: z.string().optional(), // Reference for payout transaction
   }).optional(),
 });
 
