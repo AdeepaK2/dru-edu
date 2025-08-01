@@ -102,6 +102,23 @@ const firestore = {
   async query<T extends Record<string, any>>(collection: string, fieldPath: string, operator: admin.firestore.WhereFilterOp, value: any): Promise<T[]> {
     const snapshot = await db.collection(collection).where(fieldPath, operator, value).get();
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as T));
+  },
+
+  async queryWithDateRange<T extends Record<string, any>>(
+    collection: string, 
+    whereField: string, 
+    whereOperator: admin.firestore.WhereFilterOp, 
+    whereValue: any,
+    dateField: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<T[]> {
+    const snapshot = await db.collection(collection)
+      .where(whereField, whereOperator, whereValue)
+      .where(dateField, '>=', startDate)
+      .where(dateField, '<=', endDate)
+      .get();
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as T));
   }
 };
 

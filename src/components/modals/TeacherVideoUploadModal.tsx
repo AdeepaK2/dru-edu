@@ -23,6 +23,7 @@ interface TeacherVideoUploadModalProps {
   teacherName: string;
   availableSubjects: Array<{ id: string; name: string; grade?: string; }>;
   availableClasses: Array<{ id: string; name: string; subjectId: string; }>;
+  preselectedSubjectId?: string;
 }
 
 export default function TeacherVideoUploadModal({
@@ -32,7 +33,8 @@ export default function TeacherVideoUploadModal({
   teacherId,
   teacherName,
   availableSubjects,
-  availableClasses
+  availableClasses,
+  preselectedSubjectId
 }: TeacherVideoUploadModalProps) {
   
   // Debug props
@@ -43,8 +45,19 @@ export default function TeacherVideoUploadModal({
       console.log('🔍 Available classes:', availableClasses);
       console.log('🔍 Teacher ID:', teacherId);
       console.log('🔍 Teacher name:', teacherName);
+      console.log('🔍 Preselected subject ID:', preselectedSubjectId);
     }
-  }, [isOpen, availableSubjects, availableClasses, teacherId, teacherName]);
+  }, [isOpen, availableSubjects, availableClasses, teacherId, teacherName, preselectedSubjectId]);
+
+  // Set preselected subject when modal opens
+  useEffect(() => {
+    if (isOpen && preselectedSubjectId) {
+      setFormData(prev => ({
+        ...prev,
+        subjectId: preselectedSubjectId
+      }));
+    }
+  }, [isOpen, preselectedSubjectId]);
   
   const [formData, setFormData] = useState({
     title: '',
@@ -266,7 +279,7 @@ export default function TeacherVideoUploadModal({
       setFormData({
         title: '',
         description: '',
-        subjectId: '',
+        subjectId: preselectedSubjectId || '',
         lessonId: '',
         assignedClassIds: [],
         tags: [],
@@ -605,20 +618,67 @@ export default function TeacherVideoUploadModal({
               {/* Price */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Price (Optional)
+                  Video Pricing
                 </label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formData.price}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('price', parseFloat(e.target.value) || 0)}
-                  placeholder="0.00"
-                  disabled={uploading}
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Leave as 0 for free videos
-                </p>
+                <div className="space-y-3">
+                  {/* Free/Paid Toggle */}
+                  <div className="flex items-center space-x-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="pricing"
+                        value="free"
+                        checked={formData.price === 0}
+                        onChange={() => handleInputChange('price', 0)}
+                        disabled={uploading}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Free Video</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="pricing"
+                        value="paid"
+                        checked={formData.price > 0}
+                        onChange={() => handleInputChange('price', 1)}
+                        disabled={uploading}
+                        className="mr-2"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Paid Video</span>
+                    </label>
+                  </div>
+                  
+                  {/* Price Input (only show when paid is selected) */}
+                  {formData.price > 0 && (
+                    <div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <span className="text-gray-500 dark:text-gray-400 sm:text-sm">$</span>
+                        </div>
+                        <Input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={formData.price}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleInputChange('price', parseFloat(e.target.value) || 0.01)}
+                          placeholder="1.00"
+                          disabled={uploading}
+                          className="pl-7"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Set your video price in USD
+                      </p>
+                    </div>
+                  )}
+                  
+                  {formData.price === 0 && (
+                    <p className="text-xs text-green-600 dark:text-green-400">
+                      ✓ This video will be free for all students
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

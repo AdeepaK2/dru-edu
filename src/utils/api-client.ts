@@ -121,6 +121,56 @@ export async function apiCall<T = any>(
 }
 
 /**
+ * Authenticated API call that automatically includes Bearer token
+ */
+export async function authenticatedApiCall<T = any>(
+  url: string,
+  options: RequestInit = {}
+): Promise<T> {
+  // Get auth token from localStorage
+  const authToken = localStorage.getItem('authToken');
+  if (!authToken) {
+    throw new Error('Authentication token not found. Please log in again.');
+  }
+
+  const defaultOptions: RequestInit = {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}`,
+      ...options.headers,
+    },
+    ...options,
+  };
+
+  try {
+    const response = await fetch(url, defaultOptions);
+    
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Clear invalid token
+        localStorage.removeItem('authToken');
+        throw new Error('Authentication failed. Please log in again.');
+      }
+      
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = {};
+      }
+      
+      console.error(`API Error ${response.status}:`, errorData);
+      throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error(`Authenticated API call to ${url} failed:`, error);
+    throw error;
+  }
+}
+
+/**
  * Create resource using appropriate endpoint
  */
 export async function createResource<T = any>(
