@@ -86,6 +86,7 @@ export default function StudentMeetingPage() {
   const [activeTab, setActiveTab] = useState<'select' | 'booked'>('select');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
 
   // Load initial data
   useEffect(() => {
@@ -357,6 +358,8 @@ export default function StudentMeetingPage() {
 
     try {
       setLoading(true);
+      setError(''); // Clear any previous errors
+      setSuccessMessage(''); // Clear any previous success messages
 
       // Book the time slot
       await TimeSlotService.bookTimeSlot(
@@ -384,12 +387,20 @@ export default function StudentMeetingPage() {
         notes: ''
       });
 
+      // Show success message
+      setSuccessMessage(`Meeting successfully booked with ${selectedSlot.teacherName} on ${formatDate(selectedSlot.date)} at ${formatTime(selectedSlot.startTime)}`);
+
       // Refresh data
       await loadTimeSlotsForTeachers(teachers);
       await loadBookedMeetings();
 
       setShowBookingModal(false);
       setSelectedSlot(null);
+
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
     } catch (err) {
       console.error('Error booking slot:', err);
       setError('Failed to book the meeting. Please try again.');
@@ -474,6 +485,16 @@ export default function StudentMeetingPage() {
               <div className="flex items-center">
                 <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 mr-2" />
                 <p className="text-red-600 dark:text-red-400">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Success display */}
+          {successMessage && (
+            <div className="mt-4 bg-green-100 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <div className="flex items-center">
+                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mr-2" />
+                <p className="text-green-600 dark:text-green-400">{successMessage}</p>
               </div>
             </div>
           )}
