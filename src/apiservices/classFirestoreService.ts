@@ -425,4 +425,33 @@ export class ClassFirestoreService {
     }
   }
 
+  /**
+   * Get classes by student ID (classes that student is enrolled in)
+   */
+  static async getClassesByStudent(studentId: string): Promise<ClassDocument[]> {
+    try {
+      // Note: This assumes there's a field in the class document that tracks enrolled students
+      // You might need to adjust this based on your actual data structure
+      const q = query(
+        this.collectionRef,
+        where('enrolledStudentIds', 'array-contains', studentId),
+        orderBy('createdAt', 'desc')
+      );
+      
+      const querySnapshot = await getDocs(q);
+      
+      const classes = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as ClassDocument));
+      
+      return classes;
+    } catch (error) {
+      console.error('Error fetching classes by student:', error);
+      // If the above query fails (e.g., due to missing index), try a different approach
+      // You might need to implement this differently based on your enrollment system
+      return [];
+    }
+  }
+
 }

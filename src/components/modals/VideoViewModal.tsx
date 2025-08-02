@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, Eye, Users, Calendar, Play } from 'lucide-react';
+import { X, Eye, Users, Calendar, Play, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui';
 import { VideoDisplayData } from '@/models/videoSchema';
 
@@ -81,6 +81,12 @@ export default function VideoViewModal({
                     <Calendar className="w-4 h-4 mr-2" />
                     <span>Subject: {video.subjectName}</span>
                   </div>
+                  {video.lessonName && (
+                    <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                      <BookOpen className="w-4 h-4 mr-2" />
+                      <span>Lesson: {video.lessonName}</span>
+                    </div>
+                  )}
                   <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
                     <Users className="w-4 h-4 mr-2" />
                     <span>Classes: {video.assignedClassNames?.join(', ') || 'No classes assigned'}</span>

@@ -48,6 +48,8 @@ export interface VideoDisplayData {
   videoUrl: string;
   subjectId: string;
   subjectName: string;
+  lessonId?: string;
+  lessonName?: string;
   assignedClasses: string[];
   assignedClassNames?: string[];
   assignedStudents?: string[];
@@ -77,6 +79,8 @@ export function videoDocumentToDisplay(
     videoUrl: doc.videoUrl,
     subjectId: doc.subjectId,
     subjectName: doc.subjectName || 'Unknown Subject',
+    lessonId: doc.lessonId,
+    lessonName: doc.lessonName,
     assignedClasses: doc.assignedClassIds || [],
     assignedClassNames: doc.assignedClassIds?.map(id => classNames?.[id] || id) || [],
     assignedStudents: doc.assignedStudentIds || [],

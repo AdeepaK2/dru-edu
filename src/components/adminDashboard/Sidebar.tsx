@@ -13,7 +13,8 @@ import {
   FileQuestion, 
   Settings, 
   LogOut,
-  Library
+  Library,
+  Calendar
 } from 'lucide-react';
 
 // Define sidebar menu items with Lucide icons
@@ -24,6 +25,7 @@ const menuItems = [
   { label: 'Subjects', icon: <Library size={20} />, path: '/admin/subjects' },
   { label: 'Classes', icon: <BookOpen size={20} />, path: '/admin/classes' },
   { label: 'Video Portal', icon: <Video size={20} />, path: '/admin/videos' },
+  { label: 'Meetings', icon: <Video size={20} />, path: '/admin/meetings' },
   { label: 'Transactions', icon: <CreditCard size={20} />, path: '/admin/transactions' },
   { label: 'Question Banks', icon: <FileQuestion size={20} />, path: '/admin/question-banks' },
 ];

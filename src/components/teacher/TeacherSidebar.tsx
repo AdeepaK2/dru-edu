@@ -15,7 +15,8 @@ import {
   ChevronRight,
   Menu,
   X,
-  Book
+  Book,
+  DollarSign
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/utils/firebase-client';
@@ -73,6 +74,18 @@ const sidebarItems: SidebarItem[] = [
     label: 'Grade Book',
     href: '/teacher/grades',
     icon: BarChart3,
+  },
+  {
+    id: 'meeting',
+    label: 'Meetings',
+    href: '/teacher/meeting',
+    icon: Video,
+  },
+  {
+    id: 'transactions',
+    label: 'Transactions',
+    href: '/teacher/transactions',
+    icon: DollarSign,
   },
   {
     id: 'settings',

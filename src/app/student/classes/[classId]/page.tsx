@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { 
   BookOpen, 
   FileText, 
@@ -348,6 +349,87 @@ export default function StudentClassPage() {
               <p className="text-2xl font-bold text-gray-900 dark:text-white">{requiredProgressPercentage}%</p>
               <p className="text-sm text-gray-600 dark:text-gray-400">Required Progress</p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Class Navigation */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
+        <div className="p-6">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
+            Class Resources
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Videos */}
+            <Link href={`/student/classes/${classData?.id}/videos`}>
+              <div className="group p-6 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-blue-500 dark:hover:border-blue-400 transition-colors cursor-pointer">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/40 transition-colors">
+                    <PlayCircle className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">-</span>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Video Library
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Access videos with All, Purchased, and Marketplace tabs
+                </p>
+              </div>
+            </Link>
+
+            {/* Tests */}
+            <Link href={`/student/classes/${classData?.id}/tests`}>
+              <div className="group p-6 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-green-500 dark:hover:border-green-400 transition-colors cursor-pointer">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-lg flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-900/40 transition-colors">
+                    <FileText className="w-6 h-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">-</span>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors">
+                  Tests & Quizzes
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Take tests and quizzes assigned to this class
+                </p>
+              </div>
+            </Link>
+
+            {/* Study Materials */}
+            <div className="group p-6 border-2 border-purple-500 dark:border-purple-400 rounded-lg bg-purple-50 dark:bg-purple-900/10">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-lg flex items-center justify-center">
+                  <BookOpen className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                </div>
+                <span className="text-2xl font-bold text-gray-900 dark:text-white">{weeklyMaterials.length}</span>
+              </div>
+              <h3 className="text-lg font-medium text-purple-600 dark:text-purple-400">
+                Study Materials
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Current page - PDFs and study materials for this class
+              </p>
+            </div>
+
+            {/* Assignments */}
+            <Link href={`/student/classes/${classData?.id}/assignments`}>
+              <div className="group p-6 border-2 border-gray-200 dark:border-gray-600 rounded-lg hover:border-orange-500 dark:hover:border-orange-400 transition-colors cursor-pointer">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/20 rounded-lg flex items-center justify-center group-hover:bg-orange-200 dark:group-hover:bg-orange-900/40 transition-colors">
+                    <Calendar className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">-</span>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
+                  Assignments
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  View and submit assignments for this class
+                </p>
+              </div>
+            </Link>
           </div>
         </div>
       </div>
