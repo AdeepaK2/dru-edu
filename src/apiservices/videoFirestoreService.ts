@@ -470,4 +470,60 @@ export class VideoFirestoreService {
     }
   }
 
+  /**
+   * Get videos by subject ID
+   */
+  static async getVideosBySubject(subjectId: string): Promise<VideoDocument[]> {
+    try {
+      const querySnapshot = await getDocs(
+        query(this.collectionRef, where('subjectId', '==', subjectId))
+      );
+      
+      const videos = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as VideoDocument));
+      
+      // Sort by creation date in JavaScript (newest first)
+      return videos.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis() || 0;
+        const timeB = b.createdAt?.toMillis() || 0;
+        return timeB - timeA;
+      });
+    } catch (error) {
+      console.error('Error fetching videos by subject:', error);
+      throw new Error(`Failed to fetch videos by subject: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get videos by teacher and subject
+   */
+  static async getVideosByTeacherAndSubject(teacherId: string, subjectId: string): Promise<VideoDocument[]> {
+    try {
+      const querySnapshot = await getDocs(
+        query(
+          this.collectionRef, 
+          where('teacherId', '==', teacherId),
+          where('subjectId', '==', subjectId)
+        )
+      );
+      
+      const videos = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as VideoDocument));
+      
+      // Sort by creation date in JavaScript (newest first)
+      return videos.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis() || 0;
+        const timeB = b.createdAt?.toMillis() || 0;
+        return timeB - timeA;
+      });
+    } catch (error) {
+      console.error('Error fetching videos by teacher and subject:', error);
+      throw new Error(`Failed to fetch videos by teacher and subject: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
 }

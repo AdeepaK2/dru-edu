@@ -83,6 +83,30 @@ export class StudentFirestoreService {
   }
 
   /**
+   * Get student by ID
+   */
+  static async getStudentById(studentId: string): Promise<any> {
+    try {
+      const docRef = doc(this.collectionRef, studentId);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+          createdAt: docSnap.data().createdAt?.toDate() || new Date(),
+          updatedAt: docSnap.data().updatedAt?.toDate() || new Date(),
+        };
+      } else {
+        return null;
+      }
+    } catch (error) {
+      console.error('Error fetching student:', error);
+      throw new Error(`Failed to fetch student: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get students by ID list
    */
   static async getStudentsByIds(studentIds: string[]): Promise<Record<string, string>> {

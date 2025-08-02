@@ -15,7 +15,9 @@ import {
   LogOut,
   ChevronRight,
   X,
-  BookOpenCheck
+  BookOpenCheck,
+  ShoppingCart,
+  PlayCircle
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/utils/firebase-client';
@@ -57,7 +59,7 @@ const sidebarItems: SidebarItem[] = [
   },
   {
     id: 'videos',
-    label: 'Video Classes',
+    label: 'Video Library',
     href: '/student/video',
     icon: Video,
   },
@@ -66,6 +68,12 @@ const sidebarItems: SidebarItem[] = [
     label: 'Results & Grades',
     href: '/student/results',
     icon: Trophy,
+  },
+  {
+    id: 'meeting',
+    label: 'Meetings',
+    href: '/student/meeting',
+    icon: Video,
   },
   {
     id: 'settings',

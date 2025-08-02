@@ -56,7 +56,7 @@ export default function VideoEditModal({
         title: video.title,
         description: video.description,
         subjectId: video.subjectId,
-        lessonId: '', // We'll need to add lessonId to VideoDisplayData if needed
+        lessonId: video.lessonId || '',
         assignedClassIds: video.assignedClasses || [],
         tags: video.tags || [],
         visibility: video.visibility,
@@ -204,10 +204,9 @@ export default function VideoEditModal({
         updateData.thumbnailUrl = thumbnailUrl;
       }
       
-      if (formData.lessonId) {
-        updateData.lessonId = formData.lessonId;
-        updateData.lessonName = selectedLesson?.name || '';
-      }
+      // Always update lesson fields (even if empty to clear previous values)
+      updateData.lessonId = formData.lessonId || undefined;
+      updateData.lessonName = selectedLesson?.name || undefined;
       
       // Update video document
       await VideoFirestoreService.updateVideo(video.id, updateData);
