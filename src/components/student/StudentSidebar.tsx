@@ -70,6 +70,12 @@ const sidebarItems: SidebarItem[] = [
     icon: Trophy,
   },
   {
+    id: 'meeting',
+    label: 'Meetings',
+    href: '/student/meeting',
+    icon: Video,
+  },
+  {
     id: 'settings',
     label: 'Settings',
     href: '/student/settings',

@@ -76,6 +76,12 @@ const sidebarItems: SidebarItem[] = [
     icon: BarChart3,
   },
   {
+    id: 'meeting',
+    label: 'Meetings',
+    href: '/teacher/meeting',
+    icon: Video,
+  },
+  {
     id: 'transactions',
     label: 'Transactions',
     href: '/teacher/transactions',

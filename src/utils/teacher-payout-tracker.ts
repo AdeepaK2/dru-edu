@@ -41,26 +41,21 @@ export async function getTeacherEarnings(
   endDate?: Date
 ): Promise<TeacherEarnings> {
   try {
-    // Build query constraints
-    let purchases;
+    // Get all purchases for the teacher first
+    const allPurchases = await firebaseAdmin.firestore.query(
+      'videoPurchases',
+      'teacherId',
+      '==',
+      teacherId
+    );
     
+    // Filter by date range if provided
+    let purchases = allPurchases;
     if (startDate && endDate) {
-      purchases = await firebaseAdmin.firestore.queryWithDateRange(
-        'videoPurchases',
-        'teacherId',
-        '==',
-        teacherId,
-        'createdAt',
-        startDate,
-        endDate
-      );
-    } else {
-      purchases = await firebaseAdmin.firestore.query(
-        'videoPurchases',
-        'teacherId',
-        '==',
-        teacherId
-      );
+      purchases = allPurchases.filter((purchase: any) => {
+        const createdAt = purchase.createdAt?.toDate ? purchase.createdAt.toDate() : new Date(purchase.createdAt);
+        return createdAt >= startDate && createdAt <= endDate;
+      });
     }
 
     // Filter only completed purchases for earnings calculation
@@ -136,26 +131,21 @@ export async function getAllTeacherEarnings(
   endDate?: Date
 ): Promise<PayoutSummary> {
   try {
-    // Get all completed purchases
-    let purchases;
+    // Get all completed purchases first
+    const allPurchases = await firebaseAdmin.firestore.query(
+      'videoPurchases',
+      'paymentStatus',
+      '==',
+      'completed'
+    );
     
+    // Filter by date range if provided
+    let purchases = allPurchases;
     if (startDate && endDate) {
-      purchases = await firebaseAdmin.firestore.queryWithDateRange(
-        'videoPurchases',
-        'paymentStatus',
-        '==',
-        'completed',
-        'createdAt',
-        startDate,
-        endDate
-      );
-    } else {
-      purchases = await firebaseAdmin.firestore.query(
-        'videoPurchases',
-        'paymentStatus',
-        '==',
-        'completed'
-      );
+      purchases = allPurchases.filter((purchase: any) => {
+        const createdAt = purchase.createdAt?.toDate ? purchase.createdAt.toDate() : new Date(purchase.createdAt);
+        return createdAt >= startDate && createdAt <= endDate;
+      });
     }
 
     // Group by teacher

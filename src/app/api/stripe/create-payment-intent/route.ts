@@ -167,11 +167,9 @@ async function createPaymentIntentHandler(request: AuthenticatedRequest): Promis
         videoDuration: video.duration || 0,
         videoDescription: video.description || '',
         originalPrice: video.price,
-        // Additional tracking fields for teacher payouts
-        teacherEarning: video.price * 0.8, // Example: 80% goes to teacher, 20% platform fee
-        platformFee: video.price * 0.2,
-        payoutStatus: 'pending' // Track payout status separately
-      }
+        discountApplied: 0
+        // Teacher earning info will be calculated in webhook handler
+      } as any
     };
 
     const purchaseId = await firebaseAdmin.firestore.addDoc('videoPurchases', {

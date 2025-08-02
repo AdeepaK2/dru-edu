@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { VideoPurchaseServerService } from '@/apiservices/videoPurchaseServerService';
+import { VideoPurchaseServerService } from '@/app/lib/videoPurchaseServerService';
 import { firebaseAdmin } from '@/utils/firebase-server';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
